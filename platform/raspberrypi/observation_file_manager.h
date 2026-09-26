@@ -9,6 +9,7 @@ enum class ObservationFileState
     NotFound,
     CurrentHour,
     OldHour,
+    FutureHour,
     Invalid
 };
 

@@ -69,7 +69,11 @@ ObservationFileState checkObservationFile(
         return ObservationFileState::CurrentHour;
     }
 
-    return ObservationFileState::OldHour;
+    if (fileHourLocal < currentHourLocal) {
+        return ObservationFileState::OldHour;
+    }
+
+    return ObservationFileState::FutureHour;
 }
 
 } // namespace hro
