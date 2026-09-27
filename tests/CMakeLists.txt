@@ -63,3 +63,29 @@ add_test(
     NAME resampler_16_125
     COMMAND test_resampler_16_125
 )
+
+add_executable(test_nco_shifter
+    test_nco_shifter.cpp
+)
+
+target_link_libraries(test_nco_shifter
+    PRIVATE hro_core
+)
+
+add_test(
+    NAME nco_shifter
+    COMMAND test_nco_shifter
+)
+
+add_executable(test_dsp_chain
+    test_dsp_chain.cpp
+)
+
+target_link_libraries(test_dsp_chain
+    PRIVATE hro_core
+)
+
+add_test(
+    NAME dsp_chain
+    COMMAND test_dsp_chain
+)

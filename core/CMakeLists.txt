@@ -5,6 +5,7 @@ add_library(hro_core
     src/dsp/fs4_rotator.cpp
     src/dsp/decimator_15.cpp
     src/dsp/resampler_16_125.cpp
+    src/dsp/nco_shifter.cpp
 )
 
 target_include_directories(hro_core

@@ -13,24 +13,28 @@ void Fs4Rotator::process(std::complex<float>* samples, std::size_t count)
         const float re = samples[i].real();
         const float im = samples[i].imag();
 
+        // +Fs/4 rotation
         switch (phase_) {
-        case 0: // × 1
+        case 0:
+            // × 1
             break;
 
-        case 1: // × -j
-            samples[i] = {im, -re};
+        case 1:
+            // × +j
+            samples[i] = {-im, re};
             break;
 
-        case 2: // × -1
+        case 2:
+            // × -1
             samples[i] = {-re, -im};
             break;
 
-        case 3: // × +j
-            samples[i] = {-im, re};
+        case 3:
+            // × -j
+            samples[i] = {im, -re};
             break;
         }
-
-        phase_ = (phase_ + 1) & 3U;
+        phase_ = (phase_ + 1) & 3;
     }
 }
 

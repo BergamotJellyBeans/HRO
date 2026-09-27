@@ -12,9 +12,9 @@ int main()
     Fs4Rotator rotator;
 
     // Constant complex input 1 + j0.
-    // Multiplying by exp(-j*pi*n/2) should produce:
+    // Multiplying by exp(+j*pi*n/2) should produce:
     //
-    //   1, -j, -1, +j, ...
+    //   1, +j, -1, -j, ...
     //
     C block1[] = {
         {1.0f, 0.0f},
@@ -25,7 +25,7 @@ int main()
     rotator.process(block1, 3);
 
     assert(block1[0] == C( 1.0f,  0.0f));
-    assert(block1[1] == C( 0.0f, -1.0f));
+    assert(block1[1] == C( 0.0f,  1.0f));
     assert(block1[2] == C(-1.0f,  0.0f));
 
     // Important:
@@ -38,9 +38,13 @@ int main()
 
     rotator.process(block2, 3);
 
-    assert(block2[0] == C( 0.0f,  1.0f));
+    // Sequence continues:
+    // sample 3 -> -j
+    // sample 4 -> +1
+    // sample 5 -> +j
+    assert(block2[0] == C( 0.0f, -1.0f));
     assert(block2[1] == C( 1.0f,  0.0f));
-    assert(block2[2] == C( 0.0f, -1.0f));
+    assert(block2[2] == C( 0.0f,  1.0f));
 
     // reset() must restart the sequence at phase zero.
     rotator.reset();
