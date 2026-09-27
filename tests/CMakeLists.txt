@@ -21,3 +21,17 @@ target_link_libraries(test_rtl_sdr_source
     PRIVATE
         hro_raspberrypi
 )
+
+add_executable(test_fs4_rotator
+    test_fs4_rotator.cpp
+)
+
+target_link_libraries(test_fs4_rotator
+    PRIVATE
+        hro_core
+)
+
+add_test(
+    NAME fs4_rotator
+    COMMAND test_fs4_rotator
+)
