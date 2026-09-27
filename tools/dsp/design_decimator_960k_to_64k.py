@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+
+from pathlib import Path
+import sys
+
+import numpy as np
+from scipy.signal import firwin, freqz
+
+
+# ============================================================
+# Pi5-HRO
+# First-stage anti-alias FIR decimator
+#
+#   960,000 complex samples/s
+#           ↓
+#       255-tap FIR
+#           ↓
+#       decimate /15
+#           ↓
+#    64,000 complex samples/s
+# ============================================================
+
+FS = 960_000.0
+DECIMATION = 15
+
+PASSBAND_HZ = 10_000.0
+STOPBAND_HZ = 32_000.0
+
+NUM_TAPS = 255
+KAISER_BETA = 7.85726
+
+# Center of transition band.
+CUTOFF_HZ = (PASSBAND_HZ + STOPBAND_HZ) / 2.0
+
+
+# ------------------------------------------------------------
+# Design acceptance limits
+# ------------------------------------------------------------
+
+MAX_PASSBAND_RIPPLE_DB = 0.01
+MAX_STOPBAND_DB = -80.0
+
+COEFFICIENT_SUM_TOLERANCE = 1.0e-6
+
+
+# ------------------------------------------------------------
+# Generated C++ header
+# ------------------------------------------------------------
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
+
+OUTPUT_FILE = (
+    PROJECT_ROOT
+    / "core"
+    / "include"
+    / "dsp"
+    / "decimator_15_taps.h"
+)
+
+
+def fail(message):
+    print(f"ERROR: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def main():
+
+    # --------------------------------------------------------
+    # Basic design consistency checks
+    # --------------------------------------------------------
+
+    if NUM_TAPS % DECIMATION != 0:
+        fail(
+            f"NUM_TAPS ({NUM_TAPS}) must be divisible "
+            f"by DECIMATION ({DECIMATION})"
+        )
+
+    output_fs = FS / DECIMATION
+
+    if output_fs != 64_000.0:
+        fail(
+            f"Unexpected output sample rate: {output_fs} Hz"
+        )
+
+    if STOPBAND_HZ > output_fs / 2.0:
+        fail(
+            "STOPBAND_HZ exceeds output Nyquist frequency"
+        )
+
+    # --------------------------------------------------------
+    # FIR design
+    # --------------------------------------------------------
+
+    taps = firwin(
+        NUM_TAPS,
+        CUTOFF_HZ,
+        window=("kaiser", KAISER_BETA),
+        fs=FS,
+    )
+
+    # --------------------------------------------------------
+    # Measure actual frequency response
+    # --------------------------------------------------------
+
+    f, h = freqz(
+        taps,
+        worN=262144,
+        fs=FS,
+    )
+
+    db = 20.0 * np.log10(
+        np.maximum(np.abs(h), 1.0e-15)
+    )
+
+    passband = db[f <= PASSBAND_HZ]
+    stopband = db[f >= STOPBAND_HZ]
+
+    passband_ripple = (
+        np.max(passband) - np.min(passband)
+    )
+
+    stopband_max = np.max(stopband)
+
+    coefficient_sum = np.sum(taps)
+
+    # --------------------------------------------------------
+    # Report
+    # --------------------------------------------------------
+
+    print("Pi5-HRO 960k -> 64k FIR")
+    print()
+    print(f"Input sample rate : {FS:.0f} Hz")
+    print(f"Decimation       : {DECIMATION}")
+    print(f"Output sample rate: {output_fs:.0f} Hz")
+    print()
+    print(f"Passband edge    : {PASSBAND_HZ:.0f} Hz")
+    print(f"Stopband start   : {STOPBAND_HZ:.0f} Hz")
+    print(f"Cutoff           : {CUTOFF_HZ:.0f} Hz")
+    print()
+    print(f"Taps             : {NUM_TAPS}")
+    print(f"Taps / phase     : {NUM_TAPS // DECIMATION}")
+    print(f"Kaiser beta      : {KAISER_BETA}")
+    print()
+    print(
+        f"Passband ripple  : "
+        f"{passband_ripple:.6f} dB"
+    )
+    print(
+        f"Stopband max     : "
+        f"{stopband_max:.6f} dB"
+    )
+    print(
+        f"Coefficient sum  : "
+        f"{coefficient_sum:.12f}"
+    )
+
+    # --------------------------------------------------------
+    # Acceptance tests
+    # --------------------------------------------------------
+
+    if passband_ripple > MAX_PASSBAND_RIPPLE_DB:
+        fail(
+            f"Passband ripple "
+            f"{passband_ripple:.6f} dB exceeds "
+            f"{MAX_PASSBAND_RIPPLE_DB:.6f} dB"
+        )
+
+    if stopband_max > MAX_STOPBAND_DB:
+        fail(
+            f"Stopband max "
+            f"{stopband_max:.6f} dB exceeds "
+            f"{MAX_STOPBAND_DB:.6f} dB"
+        )
+
+    if abs(coefficient_sum - 1.0) > COEFFICIENT_SUM_TOLERANCE:
+        fail(
+            f"Coefficient sum {coefficient_sum:.12f} "
+            "is not sufficiently close to 1.0"
+        )
+
+    print()
+    print("Design validation: PASS")
+
+    # --------------------------------------------------------
+    # Generate C++ header
+    # --------------------------------------------------------
+
+    lines = []
+
+    lines.append("#pragma once")
+    lines.append("")
+    lines.append("#include <array>")
+    lines.append("")
+    lines.append("namespace hro::dsp {")
+    lines.append("")
+    lines.append("// AUTO-GENERATED FILE.")
+    lines.append("//")
+    lines.append("// Generated by:")
+    lines.append(
+        "//   tools/dsp/design_decimator_960k_to_64k.py"
+    )
+    lines.append("//")
+    lines.append("// Do not edit FIR coefficients manually.")
+    lines.append("//")
+    lines.append("// Pi5-HRO first-stage FIR:")
+    lines.append("//   Fs              = 960000 Hz")
+    lines.append("//   Decimation      = 15")
+    lines.append("//   Output Fs       = 64000 Hz")
+    lines.append("//   Passband        = +/-10000 Hz")
+    lines.append("//   Stopband start  = +/-32000 Hz")
+    lines.append("//   Taps            = 255")
+    lines.append("//   Kaiser beta     = 7.85726")
+    lines.append("")
+    lines.append(
+        "inline constexpr std::array<float, 255> "
+        "kDecimator15Taps = {"
+    )
+
+    for value in taps:
+        lines.append(f"    {value:.10e}f,")
+
+    lines.append("};")
+    lines.append("")
+    lines.append("} // namespace hro::dsp")
+    lines.append("")
+
+    OUTPUT_FILE.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    OUTPUT_FILE.write_text(
+        "\n".join(lines),
+        encoding="utf-8",
+    )
+
+    print()
+    print(f"Generated: {OUTPUT_FILE}")
+
+
+if __name__ == "__main__":
+    main()
+    

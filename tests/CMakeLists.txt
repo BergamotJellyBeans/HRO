@@ -35,3 +35,17 @@ add_test(
     NAME fs4_rotator
     COMMAND test_fs4_rotator
 )
+
+add_executable(test_decimator_15
+    test_decimator_15.cpp
+)
+
+target_link_libraries(test_decimator_15
+    PRIVATE
+        hro_core
+)
+
+add_test(
+    NAME decimator_15
+    COMMAND test_decimator_15
+)
