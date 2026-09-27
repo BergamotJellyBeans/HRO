@@ -6,6 +6,8 @@ add_library(hro_core
     src/dsp/decimator_15.cpp
     src/dsp/resampler_16_125.cpp
     src/dsp/nco_shifter.cpp
+    src/dsp/hann_window.cpp
+    src/dsp/complex_fft.cpp
 )
 
 target_include_directories(hro_core

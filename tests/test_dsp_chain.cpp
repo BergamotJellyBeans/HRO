@@ -2,6 +2,8 @@
 #include "dsp/decimator_15.h"
 #include "dsp/nco_shifter.h"
 #include "dsp/resampler_16_125.h"
+#include "dsp/hann_window.h"
+#include "dsp/complex_fft.h"
 
 #include <cassert>
 #include <cmath>
@@ -124,6 +126,48 @@ int main()
               << measured_frequency << " Hz\n";
 
     assert(std::abs(measured_frequency - nco_shift) < 0.1);
+
+    //
+    // 5. Apply periodic Hann window.
+    //
+    hro::dsp::HannWindow::apply(
+        output.data(),
+        output.size());
+
+    //
+    // 6. 8192-point complex FFT.
+    //
+    const bool fft_ok =
+        hro::dsp::ComplexFft::forward(
+            output.data(),
+            output.size());
+
+    assert(fft_ok);
+
+    //
+    // Find the strongest FFT bin.
+    //
+    std::size_t peak_bin = 0;
+    float peak_power = -1.0f;
+
+    for (std::size_t k = 0; k < output.size(); ++k) {
+        const float power = std::norm(output[k]);
+
+        if (power > peak_power) {
+            peak_power = power;
+            peak_bin = k;
+        }
+    }
+
+    std::cout << "FFT peak bin     : "
+              << peak_bin << "\n";
+
+    std::cout << "Expected FFT bin : "
+              << static_cast<std::size_t>(nco_shift)
+              << "\n";
+
+    assert(peak_bin ==
+           static_cast<std::size_t>(nco_shift));
 
     std::cout << "DSP chain test passed.\n";
 

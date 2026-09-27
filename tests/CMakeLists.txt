@@ -89,3 +89,29 @@ add_test(
     NAME dsp_chain
     COMMAND test_dsp_chain
 )
+
+add_executable(test_hann_window
+    test_hann_window.cpp
+)
+
+target_link_libraries(test_hann_window
+    PRIVATE hro_core
+)
+
+add_test(
+    NAME hann_window
+    COMMAND test_hann_window
+)
+
+add_executable(test_complex_fft
+    test_complex_fft.cpp
+)
+
+target_link_libraries(test_complex_fft
+    PRIVATE hro_core
+)
+
+add_test(
+    NAME complex_fft
+    COMMAND test_complex_fft
+)
