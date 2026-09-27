@@ -12,3 +12,12 @@ add_test(
     NAME observation_file_manager
     COMMAND test_observation_file_manager
 )
+
+add_executable(test_rtl_sdr_source
+    test_rtl_sdr_source.cpp
+)
+
+target_link_libraries(test_rtl_sdr_source
+    PRIVATE
+        hro_raspberrypi
+)
