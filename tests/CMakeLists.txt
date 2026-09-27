@@ -49,3 +49,17 @@ add_test(
     NAME decimator_15
     COMMAND test_decimator_15
 )
+
+add_executable(test_resampler_16_125
+    test_resampler_16_125.cpp
+)
+
+target_link_libraries(test_resampler_16_125
+    PRIVATE
+        hro_core
+)
+
+add_test(
+    NAME resampler_16_125
+    COMMAND test_resampler_16_125
+)

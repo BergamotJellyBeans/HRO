@@ -4,6 +4,7 @@ add_library(hro_core
     src/hro_writer.cpp
     src/dsp/fs4_rotator.cpp
     src/dsp/decimator_15.cpp
+    src/dsp/resampler_16_125.cpp
 )
 
 target_include_directories(hro_core
