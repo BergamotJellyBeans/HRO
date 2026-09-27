@@ -161,6 +161,194 @@ int main()
             "2026-09-27T08:00:00"),
         hro::ObservationFileState::NotFound);
 
+    // ------------------------------------------------------------
+    // Finalize old observation file
+    // ------------------------------------------------------------
+
+    const std::string finalizeFinal =
+        (dir / "finalize_old.hro").string();
+
+    if (!createTempHro(finalizeFinal,
+            "2026-09-27T07:00:00")) {
+        std::cerr << "FAILED: create finalize old file\n";
+        return 1;
+    }
+
+    const std::string finalizeTemp = finalizeFinal + ".tmp";
+
+    const auto finalizeResult =
+        hro::finalizeOldObservationFile(
+            finalizeTemp,
+            "2026-09-27T08:00:00");
+
+    if (finalizeResult != hro::FinalizeResult::Success) {
+        std::cerr << "FAILED: finalize OldHour\n";
+        ok = false;
+    }
+    else if (fs::exists(finalizeTemp)) {
+        std::cerr << "FAILED: temporary file still exists\n";
+        ok = false;
+    }
+    else if (!fs::exists(finalizeFinal)) {
+        std::cerr << "FAILED: final file does not exist\n";
+        ok = false;
+    }
+    else {
+        std::cout << "PASS: FinalizeOldHour\n";
+    }
+
+    // ------------------------------------------------------------
+    // Never overwrite an existing final file
+    // ------------------------------------------------------------
+
+    const std::string protectedFinal =
+        (dir / "protected.hro").string();
+
+    if (!createTempHro(protectedFinal,
+                       "2026-09-27T07:00:00")) {
+        std::cerr << "FAILED: create protected temp file\n";
+        return 1;
+    }
+
+    const std::string protectedTemp = protectedFinal + ".tmp";
+
+    // Create an existing final file with known contents.
+    const std::string protectedContents = "DO NOT OVERWRITE";
+
+    {
+        std::ofstream file(protectedFinal, std::ios::binary);
+        file << protectedContents;
+    }
+
+    const auto protectedResult =
+        hro::finalizeOldObservationFile(
+            protectedTemp,
+            "2026-09-27T08:00:00");
+
+    if (protectedResult != hro::FinalizeResult::FinalFileExists) {
+        std::cerr << "FAILED: existing final file not detected\n";
+        ok = false;
+    }
+    else if (!fs::exists(protectedTemp)) {
+        std::cerr << "FAILED: temporary file was removed\n";
+        ok = false;
+    }
+    else if (!fs::exists(protectedFinal)) {
+        std::cerr << "FAILED: existing final file disappeared\n";
+        ok = false;
+    }
+    else {
+        std::ifstream file(protectedFinal, std::ios::binary);
+        std::string contents(
+            (std::istreambuf_iterator<char>(file)),
+            std::istreambuf_iterator<char>());
+
+        if (contents != protectedContents) {
+            std::cerr << "FAILED: existing final file was modified\n";
+            ok = false;
+        }
+        else {
+            std::cout << "PASS: ProtectExistingFinalFile\n";
+        }
+    }
+
+    // ------------------------------------------------------------
+    // Reject CurrentHour
+    // ------------------------------------------------------------
+
+    const std::string currentFinalize =
+        (dir / "finalize_current.hro").string();
+
+    if (!createTempHro(currentFinalize,
+                   "2026-09-27T08:00:00")) {
+        std::cerr << "FAILED: create current finalize file\n";
+        return 1;
+    }
+
+    const std::string currentFinalizeTemp =
+        currentFinalize + ".tmp";
+
+    const auto currentFinalizeResult =
+        hro::finalizeOldObservationFile(
+            currentFinalizeTemp,
+            "2026-09-27T08:00:00");
+
+    if (currentFinalizeResult != hro::FinalizeResult::InvalidSource ||
+        !fs::exists(currentFinalizeTemp) ||
+        fs::exists(currentFinalize)) {
+
+        std::cerr << "FAILED: CurrentHour finalize protection\n";
+        ok = false;
+    }
+    else {
+        std::cout << "PASS: RejectCurrentHourFinalize\n";
+    }
+
+
+    // ------------------------------------------------------------
+    // Reject FutureHour
+    // ------------------------------------------------------------
+
+    const std::string futureFinalize =
+        (dir / "finalize_future.hro").string();
+
+    if (!createTempHro(futureFinalize,
+                   "2026-09-27T09:00:00")) {
+        std::cerr << "FAILED: create future finalize file\n";
+        return 1;
+    }
+
+    const std::string futureFinalizeTemp =
+        futureFinalize + ".tmp";
+
+    const auto futureFinalizeResult =
+        hro::finalizeOldObservationFile(
+            futureFinalizeTemp,
+            "2026-09-27T08:00:00");
+
+    if (futureFinalizeResult != hro::FinalizeResult::InvalidSource ||
+        !fs::exists(futureFinalizeTemp) ||
+        fs::exists(futureFinalize)) {
+
+        std::cerr << "FAILED: FutureHour finalize protection\n";
+        ok = false;
+    }
+    else {
+        std::cout << "PASS: RejectFutureHourFinalize\n";
+    }
+
+
+    // ------------------------------------------------------------
+    // Reject invalid source
+    // ------------------------------------------------------------
+
+    const std::string invalidFinalize =
+        (dir / "finalize_invalid.hro").string();
+
+    const std::string invalidFinalizeTemp =
+        invalidFinalize + ".tmp";
+
+    {
+        std::ofstream file(invalidFinalizeTemp, std::ios::binary);
+        file << "INVALID";
+    }
+
+    const auto invalidFinalizeResult =
+        hro::finalizeOldObservationFile(
+            invalidFinalizeTemp,
+            "2026-09-27T08:00:00");
+
+    if (invalidFinalizeResult != hro::FinalizeResult::InvalidSource ||
+        !fs::exists(invalidFinalizeTemp) ||
+        fs::exists(invalidFinalize)) {
+
+        std::cerr << "FAILED: Invalid source finalize protection\n";
+        ok = false;
+    }
+    else {
+        std::cout << "PASS: RejectInvalidFinalize\n";
+    }
+
     fs::remove_all(dir);
 
     return ok ? 0 : 1;
