@@ -56,6 +56,9 @@ const TIME_AXIS_Y = 108;
 // Waterfall image area
 const WATERFALL_TOP    = 125;
 const WATERFALL_BOTTOM = 360;
+const LEVEL_TOP    = WATERFALL_BOTTOM + 10;  // 370
+const LEVEL_H      = 80;
+const LEVEL_BOTTOM = LEVEL_TOP + LEVEL_H;    // 450
 
 // Display duration
 const DISPLAY_SECONDS = 600;
@@ -73,6 +76,7 @@ const ctx = canvas.getContext('2d');
 const baseImage = new Image();
 
 let config = null;
+let liveSocket = null;
 
 const WATERFALL_SECONDS = DISPLAY_SECONDS;
 
@@ -83,6 +87,136 @@ waterfallCanvas.width  = WATERFALL_SECONDS;
 waterfallCanvas.height = WATERFALL_HEIGHT;
 
 const waterfallCtx = waterfallCanvas.getContext('2d');
+
+// Peak level graph
+const LEVEL_DB_MIN = -10.0;
+const LEVEL_DB_MAX =  30.0;
+
+const levelCanvas = document.createElement('canvas');
+levelCanvas.width  = WATERFALL_SECONDS; // 600秒
+levelCanvas.height = LEVEL_H;
+
+const levelCtx = levelCanvas.getContext('2d');
+
+function levelDbToY(db)
+{
+    if (db < LEVEL_DB_MIN)
+        db = LEVEL_DB_MIN;
+    else if (db > LEVEL_DB_MAX)
+        db = LEVEL_DB_MAX;
+
+    const normalized =
+        (db - LEVEL_DB_MIN) /
+        (LEVEL_DB_MAX - LEVEL_DB_MIN);
+
+    return LEVEL_H - 1 -
+        Math.floor(normalized * (LEVEL_H - 1));
+}
+
+function addLivePeakBar(peakValue)
+{
+    // 1秒分左へスクロール
+    levelCtx.drawImage(
+        levelCanvas,
+        1, 0,
+        WATERFALL_SECONDS - 1, LEVEL_H,
+        0, 0,
+        WATERFALL_SECONDS - 1, LEVEL_H
+    );
+
+    // 新しい1秒領域をクリア
+    const x = WATERFALL_SECONDS - 1;
+
+    levelCtx.clearRect(
+        x,
+        0,
+        1,
+        LEVEL_H
+    );
+
+    // Tab5と同じdB → Y変換
+    const y = levelDbToY(peakValue);
+
+    // Waterfallと同じ色
+    levelCtx.fillStyle =
+        waterfallColor(peakValue);
+
+    // 下端から上方向へバーを描画
+    levelCtx.fillRect(
+        x,
+        y,
+        1,
+        LEVEL_H - y
+    );
+}
+
+function connectLiveWebSocket()
+{
+    const host = window.location.hostname;
+    const url = `ws://${host}:8081`;
+
+    console.log('Connecting LIVE WebSocket:', url);
+
+    liveSocket = new WebSocket(url);
+
+    liveSocket.onopen = () =>
+    {
+        console.log('LIVE WebSocket connected');
+    };
+
+    liveSocket.onclose = (event) =>
+    {
+        console.log(
+            'LIVE WebSocket disconnected',
+            event.code,
+            event.reason
+        );
+    };
+
+    liveSocket.onerror = (event) =>
+    {
+        console.error('LIVE WebSocket error', event);
+    };
+
+    liveSocket.onmessage = (event) =>
+    {
+        try
+        {
+            const message = JSON.parse(event.data);
+
+            if (message.type !== 'fft')
+                return;
+
+            if (!Array.isArray(message.fft) ||
+                message.fft.length !== 501)
+            {
+                console.error(
+                    'Invalid LIVE FFT data:',
+                    message
+                );
+                return;
+            }
+
+            console.log(
+                'LIVE FFT:',
+                message.sequence,
+                message.peak
+            );
+
+            addLiveWaterfallLine(message.fft);
+            addLivePeakBar(message.peak);
+
+            drawMonitor();
+        }
+        catch (error)
+        {
+            console.error(
+                'LIVE message parse error:',
+                error
+            );
+        }
+    };
+}
 
 function scrollWaterfall()
 {
@@ -145,6 +279,39 @@ function waterfallColor(value)
     }
 
     return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+}
+
+function addLiveWaterfallLine(fft)
+{
+    // Waterfallを1秒分左へスクロール
+    scrollWaterfall();
+
+    const x = WATERFALL_SECONDS - 1;
+    const binCount = fft.length;
+
+    // 501 FFT binsをWaterfallの縦方向へ描画
+    for (let y = 0; y < WATERFALL_HEIGHT; ++y)
+    {
+        // 上側 = 高い周波数
+        // fft[0] = 低周波側、fft[500] = 高周波側
+        const ratio =
+            1.0 - y / (WATERFALL_HEIGHT - 1);
+
+        const bin =
+            Math.round(ratio * (binCount - 1));
+
+        const value = fft[bin];
+
+        waterfallCtx.fillStyle =
+            waterfallColor(value);
+
+        waterfallCtx.fillRect(
+            x,
+            y,
+            1,
+            1
+        );
+    }
 }
 
 function addTestWaterfallLine()
@@ -247,6 +414,31 @@ function drawFrequencyAxis()
             Number.isInteger(frequency)
                 ? frequency.toFixed(0)
                 : frequency.toFixed(1),
+            40, y
+        );
+    }
+}
+
+function drawLevelScale()
+{
+    const values = [20, 10, 0, -10];
+
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.font = '600 10px "HRO-Nunito"';
+    ctx.fillStyle = '#28d7f2';
+
+    for (const db of values)
+    {
+        const y = LEVEL_TOP + levelDbToY(db);
+
+        ctx.beginPath();
+        ctx.moveTo(43, y);
+        ctx.lineTo(49, y);
+        ctx.stroke();
+
+        ctx.fillText(
+            `${db > 0 ? '+' : ''}${db}`,
             40, y
         );
     }
@@ -393,6 +585,7 @@ function drawMonitor()
         1120, 57, 75, 12
     );
 
+    // FFT waterfall
     ctx.drawImage(
         waterfallCanvas,
         0, 0,
@@ -402,6 +595,16 @@ function drawMonitor()
         SCROLL_RIGHT - SCROLL_LEFT,
         WATERFALL_HEIGHT
     );
+
+    // Peak level history
+    ctx.drawImage(
+        levelCanvas,
+        0, 0,
+        WATERFALL_SECONDS, LEVEL_H,
+        SCROLL_LEFT, LEVEL_TOP,
+        SCROLL_RIGHT - SCROLL_LEFT, LEVEL_H
+    );
+    drawLevelScale();
     drawFrequencyAxis();
     drawTimeAxis(new Date());
 }
@@ -412,6 +615,9 @@ baseImage.onload = async function()
     {
         await document.fonts.load('16px "HRO-Nunito"');
         await loadConfig();
+
+        connectLiveWebSocket();
+
         drawMonitor();
     }
     catch (error)
@@ -421,12 +627,6 @@ baseImage.onload = async function()
     }
 };
 
-setInterval(() =>
-{
-    addTestWaterfallLine();
-    drawMonitor();
-
-}, 1000);
 
 baseImage.src = '/assets/radio_meteor_observation_base.png';
 </script>

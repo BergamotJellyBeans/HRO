@@ -1,12 +1,19 @@
 #include <httplib.h>
+#include <websocketpp/config/asio_no_tls.hpp>
+#include <websocketpp/server.hpp>
 
 #include "hro_config.h"
 
+#include <chrono>
+#include <thread>
 #include <iomanip>
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <nlohmann/json.hpp>
+#include <vector>
+#include <algorithm>
+#include <cmath>
 
 using json = nlohmann::json;
 
@@ -35,8 +42,214 @@ std::string jsonEscape(const std::string& s)
 
 } // namespace
 
+    
+class LiveWebSocketServer
+{
+public:
+    using Server = websocketpp::server<websocketpp::config::asio>;
+
+    static constexpr std::size_t MAX_LIVE_CLIENTS = 8;
+
+    using ConnectionSet =
+        std::set<
+            websocketpp::connection_hdl,
+            std::owner_less<websocketpp::connection_hdl>
+        >;
+
+    LiveWebSocketServer()
+    {
+        server_.clear_access_channels(
+            websocketpp::log::alevel::all);
+
+        server_.clear_error_channels(
+            websocketpp::log::elevel::all);
+
+        server_.init_asio();
+
+        server_.set_open_handler(
+            [this](websocketpp::connection_hdl hdl)
+            {
+                if (clients_.size() >= MAX_LIVE_CLIENTS)
+                {
+                    std::cout
+                        << "LIVE client rejected: maximum "
+                        << MAX_LIVE_CLIENTS
+                        << " clients reached\n";
+
+                    server_.close(
+                        hdl,
+                        websocketpp::close::status::try_again_later,
+                        "Maximum LIVE clients reached"
+                    );
+
+                    return;
+                }
+
+                clients_.insert(hdl);
+
+                std::cout
+                    << "LIVE client connected ("
+                    << clients_.size()
+                    << "/"
+                    << MAX_LIVE_CLIENTS
+                    << ")\n";
+            });
+
+        server_.set_close_handler(
+            [this](websocketpp::connection_hdl hdl)
+            {
+                clients_.erase(hdl);
+
+                std::cout
+                    << "LIVE client disconnected ("
+                    << clients_.size()
+                    << "/"
+                    << MAX_LIVE_CLIENTS
+                    << ")\n";
+            });
+    }
+
+    void sendTestData()
+    {
+        if (clients_.empty())
+            return;
+
+        json message;
+
+        message["type"] = "fft";
+        message["timestamp"] =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()
+            ).count();
+
+        message["sequence"] = sequence_++;
+
+        // Temporary test FFT data: 501 bins
+        constexpr int FFT_BIN_COUNT = 501;
+
+        std::vector<float> fftBins;
+        fftBins.reserve(FFT_BIN_COUNT);
+
+        for (int i = 0; i < FFT_BIN_COUNT; ++i)
+        {
+            // Test pattern only:
+            // peak around the center bin
+            const float distance =
+                std::abs(static_cast<float>(i - 250));
+
+            const float value =
+                std::max(-80.0f, -20.0f - distance * 0.25f);
+
+            fftBins.push_back(value);
+        }
+
+        message["fft"] = fftBins;
+
+        // Temporary test values
+        message["level"] = -35.0;
+        message["peak"]  = 10.0;
+
+        const std::string data = message.dump();
+
+        for (const auto& hdl : clients_)
+        {
+            websocketpp::lib::error_code ec;
+
+            server_.send(
+                hdl,
+                data,
+                websocketpp::frame::opcode::text,
+                ec
+            );
+
+            if (ec)
+            {
+                std::cerr
+                    << "LIVE send error: "
+                    << ec.message()
+                    << "\n";
+            }
+        }
+    }
+
+    void postTestData()
+    {
+        server_.get_io_service().post(
+            [this]()
+            {
+                sendTestData();
+            });
+    }
+
+    void run(uint16_t port)
+    {
+        websocketpp::lib::error_code ec;
+
+        std::cout << "LIVE: listen(" << port << ")\n";
+
+        server_.listen(port, ec);
+
+        if (ec)
+        {
+            std::cerr
+                << "LIVE listen error: "
+                << ec.value()
+                << " - "
+                << ec.message()
+                << "\n";
+            return;
+        }
+
+        std::cout << "LIVE: start_accept()\n";
+
+        server_.start_accept(ec);
+
+        if (ec)
+        {
+            std::cerr
+                << "LIVE start_accept error: "
+                << ec.value()
+                << " - "
+                << ec.message()
+                << "\n";
+            return;
+        }
+
+        std::cout
+            << "LIVE WebSocket listening on port "
+            << port << "...\n";
+
+        server_.run();
+    }
+
+private:
+    Server server_;
+    ConnectionSet clients_;
+    uint64_t sequence_ = 0;
+};
+
 int main()
 {
+    LiveWebSocketServer liveServer;
+
+    std::thread liveThread(
+        [&liveServer]()
+        {
+            liveServer.run(8081);
+        });
+
+    std::thread testThread(
+        [&liveServer]()
+        {
+            while (true)
+            {
+                std::this_thread::sleep_for(
+                    std::chrono::seconds(1));
+
+                liveServer.postTestData();
+            }
+        });
+
     httplib::Server server;
 
     server.Get("/", [](const httplib::Request&, httplib::Response& res) {
@@ -250,3 +463,5 @@ int main()
 
     return 0;
 }
+
+
