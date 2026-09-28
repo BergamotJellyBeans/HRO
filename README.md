@@ -2,6 +2,9 @@
 
 HRO is an open-source radio meteor observation system currently under development.
 
+This project is developed by **Bergamot JellyBeans** as a project of
+**Matsue Astronomy Club (松江星の会), Japan**.
+
 The project aims to build a reliable platform for continuous meteor radio observation using software-defined radio (SDR), with support for both stationary and portable observation systems.
 
 ## Project Goals
