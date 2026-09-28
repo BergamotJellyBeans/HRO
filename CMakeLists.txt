@@ -12,3 +12,4 @@ enable_testing()
 add_subdirectory(tests)
 
 add_subdirectory(app/pi/hro-web)
+add_subdirectory(app/pi/hro-engine)
