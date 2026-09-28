@@ -14,6 +14,7 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <deque>
 
 using json = nlohmann::json;
 
@@ -87,6 +88,28 @@ public:
 
                 clients_.insert(hdl);
 
+                // Send stored history to the newly connected client.
+                for (const auto& data : history_)
+                {
+                    websocketpp::lib::error_code ec;
+
+                    server_.send(
+                        hdl,
+                        data,
+                        websocketpp::frame::opcode::text,
+                        ec
+                    );
+
+                    if (ec)
+                    {
+                        std::cerr
+                            << "LIVE history send error: "
+                            << ec.message()
+                            << "\n";
+                        break;
+                    }
+                }                
+
                 std::cout
                     << "LIVE client connected ("
                     << clients_.size()
@@ -111,9 +134,6 @@ public:
 
     void sendTestData()
     {
-        if (clients_.empty())
-            return;
-
         json message;
 
         message["type"] = "fft";
@@ -150,6 +170,14 @@ public:
         message["peak"]  = 10.0;
 
         const std::string data = message.dump();
+
+        // Keep the latest 1200 seconds for newly connected clients.
+        history_.push_back(data);
+
+        while (history_.size() > LIVE_HISTORY_SECONDS)
+        {
+            history_.pop_front();
+        }
 
         for (const auto& hdl : clients_)
         {
@@ -221,10 +249,12 @@ public:
 
         server_.run();
     }
-
 private:
+    static constexpr std::size_t LIVE_HISTORY_SECONDS = 1200;
+
     Server server_;
     ConnectionSet clients_;
+    std::deque<std::string> history_;
     uint64_t sequence_ = 0;
 };
 

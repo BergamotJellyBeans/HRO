@@ -88,6 +88,12 @@ waterfallCanvas.height = WATERFALL_HEIGHT;
 
 const waterfallCtx = waterfallCanvas.getContext('2d');
 
+const staticCanvas = document.createElement('canvas');
+staticCanvas.width  = 1280;
+staticCanvas.height = 720;
+
+const staticCtx = staticCanvas.getContext('2d');
+
 // Peak level graph
 const LEVEL_DB_MIN = -10.0;
 const LEVEL_DB_MAX =  30.0;
@@ -375,6 +381,29 @@ function drawInfo(label, value, x, labelY, valueY, valueSize = 14)
     ctx.fillText(value, x, valueY);
 }
 
+function drawStaticLayer()
+{
+    drawSystemInfo();
+    drawStationInfo();
+    drawFrequencyAxis();
+    drawLevelScale();
+}
+
+function drawSystemInfo()
+{
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+
+    ctx.font = '600 10px "HRO-Nunito"';
+    ctx.fillStyle = '#20dff3';
+
+    ctx.fillText(
+        'Pi5-HRO   v0.1   Raspberry Pi 5 + RTL-SDR',
+        10,
+        695
+    );
+}
+
 function drawFrequencyAxis()
 {
     const center = config.receiver.fft_center_hz;
@@ -519,10 +548,12 @@ function drawTimeAxis(now)
     }
 }
 
-function drawMonitor()
+function buildStaticLayer()
 {
     ctx.clearRect(0, 0, 1280, 720);
     ctx.drawImage(baseImage, 0, 0, 1280, 720);
+
+    drawSystemInfo();
 
     if (!config)
         return;
@@ -544,7 +575,6 @@ function drawMonitor()
         config.receiver.fft_range_hz +
         ' Hz';
 
-    // Column 1 : Station
     drawInfo(
         'OBSERVER',
         config.station.observer,
@@ -557,7 +587,6 @@ function drawMonitor()
         485, 57, 75, 13
     );
 
-    // Column 2 : Position
     drawInfo(
         'LONGITUDE',
         longitude,
@@ -570,7 +599,6 @@ function drawMonitor()
         785, 57, 75, 11
     );
 
-    // Column 3 : Receiver
     drawInfo(
         'RECEIVER',
         config.receiver.receiver,
@@ -583,7 +611,6 @@ function drawMonitor()
         905, 57, 75, 12
     );
 
-    // Column 4 : Frequency / FFT
     drawInfo(
         'RECEIVING FREQUENCY',
         frequencyMHz,
@@ -596,18 +623,32 @@ function drawMonitor()
         1120, 57, 75, 12
     );
 
-    // FFT waterfall
+    drawLevelScale();
+    drawFrequencyAxis();
+
+    // 完成した固定画面を保存
+    staticCtx.clearRect(0, 0, 1280, 720);
+    staticCtx.drawImage(canvas, 0, 0);
+}
+
+function drawMonitor()
+{
+    ctx.clearRect(0, 0, 1280, 720);
+
+    // 完成済みの固定画面
+    ctx.drawImage(staticCanvas, 0, 0);
+
+    // Waterfall
     ctx.drawImage(
         waterfallCanvas,
         0, 0,
         WATERFALL_SECONDS, WATERFALL_HEIGHT,
-
         SCROLL_LEFT, WATERFALL_TOP,
         SCROLL_RIGHT - SCROLL_LEFT,
         WATERFALL_HEIGHT
     );
 
-    // Peak level history
+    // Peak
     ctx.drawImage(
         levelCanvas,
         0, 0,
@@ -615,29 +656,31 @@ function drawMonitor()
         SCROLL_LEFT, LEVEL_TOP,
         SCROLL_RIGHT - SCROLL_LEFT, LEVEL_H
     );
-    drawLevelScale();
-    drawFrequencyAxis();
+
+    // 時刻だけ毎回更新
     drawTimeAxis(new Date());
 }
 
-baseImage.onload = async function()
+baseImage.onload = async () =>
 {
     try
     {
-        await document.fonts.load('16px "HRO-Nunito"');
         await loadConfig();
 
-        connectLiveWebSocket();
+        // Canvasで使用するNunito Sansを明示的にロード
+        await document.fonts.load('600 10px "HRO-Nunito"');
+        await document.fonts.load('600 13px "HRO-Nunito"');
 
+        buildStaticLayer();
         drawMonitor();
+
+        connectLiveWebSocket();
     }
     catch (error)
     {
-        console.error(error);
-        ctx.drawImage(baseImage, 0, 0, 1280, 720);
+        console.error('Monitor initialization failed:', error);
     }
 };
-
 
 baseImage.src = '/assets/radio_meteor_observation_base.png';
 </script>
