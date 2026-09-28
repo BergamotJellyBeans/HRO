@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Pi5-HRO Station Settings</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #f0f2f5;
+    margin: 0;
+    padding: 30px;
+}
+
+.container {
+    max-width: 760px;
+    margin: auto;
+    background: white;
+    padding: 28px;
+    border-radius: 10px;
+}
+
+h1 {
+    margin-top: 0;
+}
+
+fieldset {
+    margin-bottom: 22px;
+    padding: 18px;
+    border: 1px solid #bbb;
+    border-radius: 6px;
+}
+
+legend {
+    font-weight: bold;
+}
+
+.row {
+    display: grid;
+    grid-template-columns: 230px 1fr;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+input {
+    padding: 7px;
+    font-size: 15px;
+}
+
+.status {
+    margin-top: 15px;
+    font-size: 14px;
+}
+
+.dms {
+    display: grid;
+    grid-template-columns: 70px 18px 70px 18px 90px 18px 60px;
+    gap: 4px;
+    align-items: center;
+}
+
+.dms input,
+.dms select {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 7px;
+    font-size: 15px;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>Pi5-HRO Station Settings</h1>
+
+<fieldset>
+<legend>Station</legend>
+
+<div class="row">
+<label>Observer</label>
+<input id="observer">
+</div>
+
+<div class="row">
+<label>Receiving Location</label>
+<input id="location">
+</div>
+
+<div class="row">
+<label>Longitude</label>
+<div class="dms">
+    <input id="longitude_deg" type="number" min="0" max="180">
+    <span>°</span>
+    <input id="longitude_min" type="number" min="0" max="59">
+    <span>′</span>
+    <input id="longitude_sec" type="number" min="0" max="59.999" step="0.001">
+    <span>″</span>
+    <select id="longitude_dir">
+        <option value="E">E</option>
+        <option value="W">W</option>
+    </select>
+</div>
+</div>
+
+<div class="row">
+<label>Latitude</label>
+<div class="dms">
+    <input id="latitude_deg" type="number" min="0" max="90">
+    <span>°</span>
+    <input id="latitude_min" type="number" min="0" max="59">
+    <span>′</span>
+    <input id="latitude_sec" type="number" min="0" max="59.999" step="0.001">
+    <span>″</span>
+    <select id="latitude_dir">
+        <option value="N">N</option>
+        <option value="S">S</option>
+    </select>
+</div>
+
+</fieldset>
+
+
+<fieldset>
+<legend>Receiver</legend>
+
+<div class="row">
+<label>Receiver</label>
+<input id="receiver">
+</div>
+
+<div class="row">
+<label>Receiving Frequency (Hz)</label>
+<input id="frequency_hz" type="number">
+</div>
+
+<div class="row">
+<label>FFT Center Frequency (Hz)</label>
+<input id="fft_center_hz" type="number">
+</div>
+
+<div class="row">
+<label>FFT Display Range +/- (Hz)</label>
+<input id="fft_range_hz" type="number">
+</div>
+
+<div class="row">
+<label>Level Peak Range +/- (Hz)</label>
+<input id="level_peak_range_hz" type="number">
+</div>
+
+<div class="row">
+<label>Receiving Antenna</label>
+<input id="antenna">
+</div>
+
+</fieldset>
+
+
+<fieldset>
+<legend>Screenshot</legend>
+
+<div class="row">
+<label>File Prefix</label>
+<input id="prefix">
+</div>
+
+</fieldset>
+
+<div class="status" id="status">Loading...</div>
+
+</div>
+
+
+<script>
+
+function decimalToDMS(value)
+{
+    const absValue = Math.abs(value);
+
+    const deg = Math.floor(absValue);
+    const minFloat = (absValue - deg) * 60.0;
+    const min = Math.floor(minFloat);
+    const sec = (minFloat - min) * 60.0;
+
+    return {
+        deg: deg,
+        min: min,
+        sec: sec
+    };
+}
+
+async function loadConfig()
+{
+    try
+    {
+        const response = await fetch('/api/config');
+
+        if (!response.ok)
+            throw new Error('HTTP ' + response.status);
+
+        const config = await response.json();
+
+        document.getElementById('observer').value =
+            config.station.observer;
+
+        document.getElementById('location').value =
+            config.station.location;
+
+        const lon = decimalToDMS(config.station.longitude);
+
+        document.getElementById('longitude_deg').value = lon.deg;
+        document.getElementById('longitude_min').value = lon.min;
+        document.getElementById('longitude_sec').value = lon.sec.toFixed(3);
+        document.getElementById('longitude_dir').value =
+            config.station.longitude >= 0 ? 'E' : 'W';
+
+        const lat = decimalToDMS(config.station.latitude);
+
+        document.getElementById('latitude_deg').value = lat.deg;
+        document.getElementById('latitude_min').value = lat.min;
+        document.getElementById('latitude_sec').value = lat.sec.toFixed(3);
+        document.getElementById('latitude_dir').value =
+            config.station.latitude >= 0 ? 'N' : 'S';
+
+        document.getElementById('receiver').value =
+            config.receiver.receiver;
+
+        document.getElementById('frequency_hz').value =
+            config.receiver.frequency_hz;
+
+        document.getElementById('fft_center_hz').value =
+            config.receiver.fft_center_hz;
+
+        document.getElementById('fft_range_hz').value =
+            config.receiver.fft_range_hz;
+
+        document.getElementById('level_peak_range_hz').value =
+            config.receiver.level_peak_range_hz;
+
+        document.getElementById('antenna').value =
+            config.receiver.antenna;
+
+        document.getElementById('prefix').value =
+            config.screenshot.prefix;
+
+        document.getElementById('status').textContent =
+            'Configuration loaded.';
+    }
+    catch (error)
+    {
+        document.getElementById('status').textContent =
+            'Failed to load configuration: ' + error;
+    }
+}
+
+loadConfig();
+
+</script>
+
+</body>
+</html>

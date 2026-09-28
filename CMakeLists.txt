@@ -10,3 +10,5 @@ add_subdirectory(core)
 add_subdirectory(platform/raspberrypi)
 enable_testing()
 add_subdirectory(tests)
+
+add_subdirectory(app/pi/hro-web)
