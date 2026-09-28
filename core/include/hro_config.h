@@ -19,12 +19,11 @@ struct HroConfig
     std::string antenna;
     int level_peak_range_hz = 0;
 
-    // Audio
-    int volume = 40;
-    bool mute = false;
-
     // Screenshot
     std::string screenshot_prefix;
 
     bool load(const std::string& filename);
+    bool save(const std::string& filename) const;
+    bool validate(std::string& error_message) const;
+    void setDefaults();
 };

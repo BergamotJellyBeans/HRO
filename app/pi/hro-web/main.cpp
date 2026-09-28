@@ -5,6 +5,9 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 namespace
 {
@@ -84,12 +87,6 @@ int main()
                 << "    \"antenna\": \"" << jsonEscape(config.antenna) << "\"\n"
                 << "  },\n"
 
-                << "  \"audio\": {\n"
-                << "    \"volume\": " << config.volume << ",\n"
-                << "    \"mute\": "
-                << (config.mute ? "true" : "false") << "\n"
-                << "  },\n"
-
                 << "  \"screenshot\": {\n"
                 << "    \"prefix\": \""
                 << jsonEscape(config.screenshot_prefix) << "\"\n"
@@ -98,6 +95,90 @@ int main()
 
             res.set_content(json.str(), "application/json");
         });
+
+    server.Post("/api/config",
+        [](const httplib::Request& req, httplib::Response& res)
+        {
+            try
+            {
+                const json body = json::parse(req.body);
+
+                HroConfig config;
+
+                config.observer =
+                    body.at("station").at("observer").get<std::string>();
+
+                config.location =
+                    body.at("station").at("location").get<std::string>();
+
+                config.latitude =
+                    body.at("station").at("latitude").get<double>();
+
+                config.longitude =
+                    body.at("station").at("longitude").get<double>();
+
+                config.receiver =
+                    body.at("receiver").at("receiver").get<std::string>();
+
+                config.frequency_hz =
+                    body.at("receiver").at("frequency_hz").get<uint32_t>();
+
+                config.fft_center_hz =
+                    body.at("receiver").at("fft_center_hz").get<int>();
+
+                config.fft_range_hz =
+                    body.at("receiver").at("fft_range_hz").get<int>();
+
+                config.level_peak_range_hz =
+                    body.at("receiver").at("level_peak_range_hz").get<int>();
+
+                config.antenna =
+                    body.at("receiver").at("antenna").get<std::string>();
+
+                config.screenshot_prefix =
+                    body.at("screenshot").at("prefix").get<std::string>();
+
+                std::string error_message;
+
+                if (!config.validate(error_message))
+                {
+                    res.status = 400;
+
+                    json response;
+                    response["error"] = error_message;
+
+                    res.set_content(
+                        response.dump() + "\n",
+                        "application/json");
+                    return;
+                }
+
+                if (!config.save("/etc/hro/config.ini"))
+                {
+                    res.status = 500;
+
+                    res.set_content(
+                        "{\"error\":\"Failed to save config.ini\"}\n",
+                        "application/json");
+                    return;
+                }
+
+                res.set_content(
+                    "{\"status\":\"saved\"}\n",
+                    "application/json");
+       }
+        catch (const std::exception& e)
+        {
+            res.status = 400;
+
+            json response;
+            response["error"] = e.what();
+
+            res.set_content(
+                response.dump() + "\n",
+                "application/json");
+        }
+    });
 
     std::cout << "Pi5-HRO Web Server\n";
     std::cout << "Listening on port 8080...\n";
