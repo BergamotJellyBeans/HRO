@@ -4,6 +4,7 @@
 
 #include <iomanip>
 #include <iostream>
+#include <fstream>
 #include <sstream>
 #include <nlohmann/json.hpp>
 
@@ -48,6 +49,64 @@ int main()
             res.set_file_content(
                 "ui/web/settings.html",
                 "text/html");
+        });
+
+    server.Get("/monitor",
+        [](const httplib::Request&, httplib::Response& res)
+        {
+            std::ifstream file("ui/web/monitor.html");
+
+            if (!file.is_open())
+            {
+                res.status = 404;
+                res.set_content("monitor.html not found\n", "text/plain");
+                return;
+            }
+
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+
+            res.set_content(buffer.str(), "text/html");
+        });
+
+    server.Get("/assets/radio_meteor_observation_base.png",
+        [](const httplib::Request&, httplib::Response& res)
+        {
+            std::ifstream file(
+                "ui/assets/radio_meteor_observation_base.png",
+                std::ios::binary);
+
+            if (!file.is_open())
+            {
+                res.status = 404;
+                res.set_content("base image not found\n", "text/plain");
+                return;
+            }
+
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+
+            res.set_content(buffer.str(), "image/png");
+        });
+
+    server.Get("/assets/fonts/NunitoSans-VariableFont.ttf",
+        [](const httplib::Request&, httplib::Response& res)
+        {
+            std::ifstream file(
+                "ui/assets/fonts/NunitoSans-VariableFont.ttf",
+                std::ios::binary);
+
+            if (!file.is_open())
+            {
+                res.status = 404;
+                res.set_content("font not found\n", "text/plain");
+                return;
+            }
+
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+
+            res.set_content(buffer.str(), "font/ttf");
         });
 
     server.Get("/api/config",
