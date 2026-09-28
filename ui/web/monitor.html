@@ -46,8 +46,8 @@ body {
 // ============================================================
 
 // Time-scroll area
-const SCROLL_LEFT  = 63;
-const SCROLL_RIGHT = 1190;
+const SCROLL_LEFT  = 53;
+const SCROLL_RIGHT = 1253;
 const SCROLL_TOP   = 98;
 
 // Time axis
@@ -61,7 +61,7 @@ const LEVEL_H      = 80;
 const LEVEL_BOTTOM = LEVEL_TOP + LEVEL_H;    // 450
 
 // Display duration
-const DISPLAY_SECONDS = 600;
+const DISPLAY_SECONDS = 1200;
 
 const WATERFALL_WIDTH  = SCROLL_RIGHT - SCROLL_LEFT;
 const WATERFALL_HEIGHT = WATERFALL_BOTTOM - WATERFALL_TOP;
@@ -465,23 +465,33 @@ function drawTimeAxis(now)
     ctx.font = '600 10px "HRO-Nunito"';
     ctx.textBaseline = 'bottom';
 
-    // 現在時刻より少し未来まで作る
+    // 現在時刻より2分未来から開始
     // → 次の時刻目盛りが右側からスクロールして入ってくる
     const tick = new Date(now);
     tick.setSeconds(0, 0);
     tick.setMinutes(tick.getMinutes() + 2);
 
-    for (let i = 0; i <= 12; ++i)
+    // 表示時間 + 2分先行分
+    const displayMinutes =
+        Math.ceil(DISPLAY_SECONDS / 60);
+
+    const tickMinutes =
+        displayMinutes + 2;
+
+    for (let i = 0; i <= tickMinutes; ++i)
     {
-        const t = new Date(tick.getTime() - i * 60000);
-        const x = timeToX(t.getTime(), nowMs);
+        const t =
+            new Date(tick.getTime() - i * 60000);
+
+        const x =
+            timeToX(t.getTime(), nowMs);
 
         if (x < SCROLL_LEFT || x > SCROLL_RIGHT)
             continue;
 
-        const major = (t.getMinutes() % 2 === 0);
+        const major =
+            (t.getMinutes() % 2 === 0);
 
-        // 目盛り
         ctx.beginPath();
         ctx.moveTo(x, TIME_AXIS_Y);
         ctx.lineTo(
@@ -490,15 +500,16 @@ function drawTimeAxis(now)
         );
         ctx.stroke();
 
-        // 2分ごとの時刻表示
         if (major)
         {
-            const hh = String(t.getHours()).padStart(2, '0');
-            const mm = String(t.getMinutes()).padStart(2, '0');
+            const hh =
+                String(t.getHours()).padStart(2, '0');
+
+            const mm =
+                String(t.getMinutes()).padStart(2, '0');
 
             ctx.textAlign = 'center';
 
-            // 文字は目盛りの上
             ctx.fillText(
                 `${hh}:${mm}`,
                 x,
