@@ -115,3 +115,16 @@ add_test(
     NAME complex_fft
     COMMAND test_complex_fft
 )
+
+add_executable(test_hro_config
+    test_hro_config.cpp
+)
+
+target_link_libraries(test_hro_config
+    PRIVATE hro_core
+)
+
+add_test(
+    NAME hro_config
+    COMMAND test_hro_config
+)

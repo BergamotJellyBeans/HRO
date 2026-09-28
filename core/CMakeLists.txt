@@ -2,6 +2,7 @@ add_library(hro_core
     src/hro_format.cpp
     src/hro_header.cpp
     src/hro_writer.cpp
+    src/hro_config.cpp
     src/dsp/fs4_rotator.cpp
     src/dsp/decimator_15.cpp
     src/dsp/resampler_16_125.cpp
