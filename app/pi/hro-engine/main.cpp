@@ -13,11 +13,102 @@
 #include <complex>
 #include <cmath>
 #include <algorithm>
+#include <cstring>
+
+#include <chrono>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+
+namespace
+{
+
+constexpr uint32_t HRO_LIVE_MAGIC = 0x48524F31;  // "HRO1"
+constexpr uint16_t HRO_LIVE_VERSION = 1;
+constexpr std::size_t HRO_LIVE_FFT_BINS = 501;
+
+constexpr std::size_t HRO_LIVE_HEADER_SIZE = 28;
+
+constexpr std::size_t HRO_LIVE_PACKET_SIZE =
+    HRO_LIVE_HEADER_SIZE +
+    HRO_LIVE_FFT_BINS * sizeof(float);
+
+static_assert(
+    HRO_LIVE_PACKET_SIZE == 2032,
+    "Unexpected HRO Live UDP packet size"
+);
+
+void writeUint16BE(uint8_t* p, uint16_t value)
+{
+    p[0] = static_cast<uint8_t>(value >> 8);
+    p[1] = static_cast<uint8_t>(value);
+}
+
+void writeUint32BE(uint8_t* p, uint32_t value)
+{
+    p[0] = static_cast<uint8_t>(value >> 24);
+    p[1] = static_cast<uint8_t>(value >> 16);
+    p[2] = static_cast<uint8_t>(value >> 8);
+    p[3] = static_cast<uint8_t>(value);
+}
+
+void writeUint64BE(uint8_t* p, uint64_t value)
+{
+    for (int i = 7; i >= 0; --i)
+    {
+        p[i] = static_cast<uint8_t>(value);
+        value >>= 8;
+    }
+}
+
+void writeFloat32BE(uint8_t* p, float value)
+{
+    static_assert(sizeof(float) == sizeof(uint32_t));
+
+    uint32_t bits;
+    std::memcpy(&bits, &value, sizeof(bits));
+
+    writeUint32BE(p, bits);
+}
+
+} // namespace
 
 int main()
 {
     constexpr uint32_t SAMPLE_RATE = 960000;
     constexpr std::size_t BUFFER_SIZE = 262144;
+    constexpr uint16_t HRO_LIVE_UDP_PORT = 50000;
+
+    const int liveSocket =
+        ::socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (liveSocket < 0)
+    {
+        std::cerr << "ERROR: Failed to create LIVE UDP socket\n";
+        return 1;
+    }
+
+    sockaddr_in liveAddress{};
+    liveAddress.sin_family = AF_INET;
+    liveAddress.sin_port = htons(HRO_LIVE_UDP_PORT);
+
+    if (::inet_pton(
+        AF_INET,
+        "127.0.0.1",
+        &liveAddress.sin_addr) != 1)
+    {
+        std::cerr << "ERROR: Invalid LIVE destination address\n";
+        ::close(liveSocket);
+        return 1;
+    }
+
+    std::cout
+        << "LIVE UDP destination: 127.0.0.1:"
+        << HRO_LIVE_UDP_PORT
+        << '\n';
+
+    uint64_t liveSequence = 0;
 
     HroConfig config;
 
@@ -69,9 +160,9 @@ int main()
     std::vector<std::complex<float>> decimatedBuffer;
 
     hro::dsp::NcoShifter ncoShifter(64000.0);
-    ncoShifter.process(
-        decimatedBuffer.data(),
-        decimatedBuffer.size()
+
+    ncoShifter.setFrequencyShift(
+        -static_cast<double>(config.fft_center_hz)
     );
 
     hro::dsp::Resampler16_125 resampler;
@@ -249,11 +340,72 @@ int main()
                         displayDb[static_cast<std::size_t>(i)]
                     );
                 }
-                
+
                 std::cout
                     << "Peak dB: "
                     << peakDb
                     << '\n';
+
+                std::vector<uint8_t> livePacket(
+                    HRO_LIVE_PACKET_SIZE);
+
+                writeUint32BE(
+                    livePacket.data() + 0,
+                    HRO_LIVE_MAGIC);
+
+                writeUint16BE(
+                    livePacket.data() + 4,
+                    HRO_LIVE_VERSION);
+
+                writeUint16BE(
+                    livePacket.data() + 6,
+                    static_cast<uint16_t>(displayDb.size()));
+
+                writeUint64BE(
+                    livePacket.data() + 8,
+                    liveSequence++);
+
+                const auto now =
+                    std::chrono::system_clock::now();
+
+                const int64_t timestampMs =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        now.time_since_epoch()
+                    ).count();
+
+                writeUint64BE(
+                    livePacket.data() + 16,
+                    static_cast<uint64_t>(timestampMs));
+
+                writeFloat32BE(
+                    livePacket.data() + 24,
+                    peakDb);
+
+                for (std::size_t i = 0;
+                     i < displayDb.size();
+                     ++i)
+                {
+                    writeFloat32BE(
+                        livePacket.data() +
+                            HRO_LIVE_HEADER_SIZE +
+                            i * sizeof(float),
+                        displayDb[i]);
+                }
+
+                const ssize_t sent =
+                    ::sendto(
+                        liveSocket,
+                        livePacket.data(),
+                        livePacket.size(),
+                        0,
+                        reinterpret_cast<const sockaddr*>(&liveAddress),
+                        sizeof(liveAddress));
+
+                if (sent != static_cast<ssize_t>(livePacket.size()))
+                {
+                    std::cerr
+                        << "WARNING: LIVE UDP send failed\n";
+                }
             }           
         }        
 

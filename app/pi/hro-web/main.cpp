@@ -15,11 +15,33 @@
 #include <algorithm>
 #include <cmath>
 #include <deque>
+#include <cstdint>
+#include <cstring>
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <utility>
 
 using json = nlohmann::json;
 
 namespace
 {
+constexpr uint32_t HRO_LIVE_MAGIC = 0x48524F31;  // "HRO1"
+constexpr uint16_t HRO_LIVE_VERSION = 1;
+constexpr std::size_t HRO_LIVE_FFT_BINS = 501;
+constexpr uint16_t HRO_LIVE_UDP_PORT = 50000;
+
+constexpr std::size_t HRO_LIVE_HEADER_SIZE = 28;
+constexpr std::size_t HRO_LIVE_PACKET_SIZE =
+    HRO_LIVE_HEADER_SIZE +
+    HRO_LIVE_FFT_BINS * sizeof(float);
+
+static_assert(
+    HRO_LIVE_PACKET_SIZE == 2032,
+    "Unexpected HRO Live UDP packet size"
+);
 
 std::string jsonEscape(const std::string& s)
 {
@@ -39,6 +61,107 @@ std::string jsonEscape(const std::string& s)
     }
 
     return out;
+}
+
+uint16_t readUint16BE(const uint8_t* p)
+{
+    return
+        (static_cast<uint16_t>(p[0]) << 8) |
+         static_cast<uint16_t>(p[1]);
+}
+
+uint32_t readUint32BE(const uint8_t* p)
+{
+    return
+        (static_cast<uint32_t>(p[0]) << 24) |
+        (static_cast<uint32_t>(p[1]) << 16) |
+        (static_cast<uint32_t>(p[2]) << 8)  |
+         static_cast<uint32_t>(p[3]);
+}
+
+uint64_t readUint64BE(const uint8_t* p)
+{
+    uint64_t value = 0;
+
+    for (int i = 0; i < 8; ++i)
+    {
+        value =
+            (value << 8) |
+            static_cast<uint64_t>(p[i]);
+    }
+
+    return value;
+}
+
+float readFloat32BE(const uint8_t* p)
+{
+    const uint32_t bits = readUint32BE(p);
+
+    float value;
+    static_assert(sizeof(value) == sizeof(bits));
+
+    std::memcpy(&value, &bits, sizeof(value));
+
+    return value;
+}
+
+struct HroLiveData
+{
+    uint64_t sequence = 0;
+    int64_t timestamp_ms = 0;
+    float peak_db = 0.0f;
+    std::vector<float> fft_db;
+};
+
+bool decodeHroLivePacket(
+    const uint8_t* data,
+    std::size_t size,
+    HroLiveData& output)
+{
+    if (size != HRO_LIVE_PACKET_SIZE)
+    {
+        return false;
+    }
+
+    const uint32_t magic =
+        readUint32BE(data + 0);
+
+    const uint16_t version =
+        readUint16BE(data + 4);
+
+    const uint16_t binCount =
+        readUint16BE(data + 6);
+
+    if (magic != HRO_LIVE_MAGIC ||
+        version != HRO_LIVE_VERSION ||
+        binCount != HRO_LIVE_FFT_BINS)
+    {
+        return false;
+    }
+
+    output.sequence =
+        readUint64BE(data + 8);
+
+    output.timestamp_ms =
+        static_cast<int64_t>(
+            readUint64BE(data + 16));
+
+    output.peak_db =
+        readFloat32BE(data + 24);
+
+    output.fft_db.resize(HRO_LIVE_FFT_BINS);
+
+    for (std::size_t i = 0;
+         i < HRO_LIVE_FFT_BINS;
+         ++i)
+    {
+        output.fft_db[i] =
+            readFloat32BE(
+                data + HRO_LIVE_HEADER_SIZE +
+                i * sizeof(float));
+    }
+
+    return true;
 }
 
 } // namespace
@@ -132,42 +255,19 @@ public:
             });
     }
 
-    void sendTestData()
+    void sendLiveData(
+        uint64_t sequence,
+        int64_t timestampMs,
+        const std::vector<float>& fftBins,
+        float peakDb)
     {
         json message;
 
         message["type"] = "fft";
-        message["timestamp"] =
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::system_clock::now().time_since_epoch()
-            ).count();
-
-        message["sequence"] = sequence_++;
-
-        // Temporary test FFT data: 501 bins
-        constexpr int FFT_BIN_COUNT = 501;
-
-        std::vector<float> fftBins;
-        fftBins.reserve(FFT_BIN_COUNT);
-
-        for (int i = 0; i < FFT_BIN_COUNT; ++i)
-        {
-            // Test pattern only:
-            // peak around the center bin
-            const float distance =
-                std::abs(static_cast<float>(i - 250));
-
-            const float value =
-                std::max(-80.0f, -20.0f - distance * 0.25f);
-
-            fftBins.push_back(value);
-        }
-
+        message["timestamp"] = timestampMs;
+        message["sequence"] = sequence;
         message["fft"] = fftBins;
-
-        // Temporary test values
-        message["level"] = -35.0;
-        message["peak"]  = 10.0;
+        message["peak"] = peakDb;
 
         const std::string data = message.dump();
 
@@ -200,6 +300,62 @@ public:
         }
     }
 
+    void sendTestData()
+    {
+        constexpr int FFT_BIN_COUNT = 501;
+
+        std::vector<float> fftBins;
+        fftBins.reserve(FFT_BIN_COUNT);
+
+        for (int i = 0; i < FFT_BIN_COUNT; ++i)
+        {
+            const float distance =
+                std::abs(static_cast<float>(i - 250));
+
+            const float value =
+                std::max(
+                    -80.0f,
+                    -20.0f - distance * 0.25f
+                );
+
+            fftBins.push_back(value);
+        }
+
+        const int64_t timestampMs =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()
+            ).count();
+
+        sendLiveData(
+            sequence_++,
+            timestampMs,
+            fftBins,
+            10.0f
+        );
+    }
+
+    void postLiveData(
+        uint64_t sequence,
+        int64_t timestampMs,
+        std::vector<float> fftBins,
+        float peakDb)
+    {
+        server_.get_io_service().post(
+            [this,
+            sequence,
+            timestampMs,
+            fftBins = std::move(fftBins),
+            peakDb]() mutable
+            {
+                sendLiveData(
+                    sequence,
+                    timestampMs,
+                    fftBins,
+                    peakDb
+                );
+            });
+    }
+
     void postTestData()
     {
         server_.get_io_service().post(
@@ -212,6 +368,9 @@ public:
     void run(uint16_t port)
     {
         websocketpp::lib::error_code ec;
+
+        // Allow immediate restart while previous WebSocket connections remain in TIME_WAIT.
+        server_.set_reuse_addr(true);
 
         std::cout << "LIVE: listen(" << port << ")\n";
 
@@ -258,6 +417,87 @@ private:
     uint64_t sequence_ = 0;
 };
 
+void runUdpReceiver(LiveWebSocketServer& liveServer)
+{
+    const int sock =
+        ::socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (sock < 0)
+    {
+        std::cerr
+            << "UDP socket creation failed\n";
+        return;
+    }
+
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_ANY);
+    address.sin_port = htons(HRO_LIVE_UDP_PORT);
+
+    if (::bind(
+            sock,
+            reinterpret_cast<sockaddr*>(&address),
+            sizeof(address)) < 0)
+    {
+        std::cerr
+            << "UDP bind failed on port "
+            << HRO_LIVE_UDP_PORT
+            << "\n";
+
+        ::close(sock);
+        return;
+    }
+
+    std::cout
+        << "LIVE UDP listening on port "
+        << HRO_LIVE_UDP_PORT
+        << "...\n";
+
+    std::vector<uint8_t> buffer(
+        HRO_LIVE_PACKET_SIZE);
+
+    while (true)
+    {
+        const ssize_t received =
+            ::recvfrom(
+                sock,
+                buffer.data(),
+                buffer.size(),
+                0,
+                nullptr,
+                nullptr);
+
+        if (received < 0)
+        {
+            std::cerr
+                << "UDP receive error\n";
+            continue;
+        }
+
+        HroLiveData liveData;
+
+        if (!decodeHroLivePacket(
+                buffer.data(),
+                static_cast<std::size_t>(received),
+                liveData))
+        {
+            std::cerr
+                << "Invalid HRO LIVE UDP packet: "
+                << received
+                << " bytes\n";
+            continue;
+        }
+
+        liveServer.postLiveData(
+            liveData.sequence,
+            liveData.timestamp_ms,
+            std::move(liveData.fft_db),
+            liveData.peak_db);
+    }
+
+    ::close(sock);
+}
+
 int main()
 {
     LiveWebSocketServer liveServer;
@@ -268,16 +508,10 @@ int main()
             liveServer.run(8081);
         });
 
-    std::thread testThread(
+    std::thread udpThread(
         [&liveServer]()
         {
-            while (true)
-            {
-                std::this_thread::sleep_for(
-                    std::chrono::seconds(1));
-
-                liveServer.postTestData();
-            }
+            runUdpReceiver(liveServer);
         });
 
     httplib::Server server;
