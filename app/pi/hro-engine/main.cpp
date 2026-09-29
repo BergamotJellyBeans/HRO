@@ -21,6 +21,16 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+#include <ctime>
+#include <iomanip>
+
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <deque>
+#include <atomic>
+#include <csignal>
+
 namespace
 {
 
@@ -74,11 +84,25 @@ void writeFloat32BE(uint8_t* p, float value)
 
 } // namespace
 
+namespace
+{
+    volatile std::sig_atomic_t g_stopRequested = 0;
+
+    void signalHandler(int)
+    {
+        g_stopRequested = 1;
+    }
+}
+
 int main()
 {
+    std::signal(SIGINT, signalHandler);
+    std::signal(SIGTERM, signalHandler);
+
     constexpr uint32_t SAMPLE_RATE = 960000;
     constexpr std::size_t BUFFER_SIZE = 262144;
     constexpr uint16_t HRO_LIVE_UDP_PORT = 50000;
+    constexpr uint16_t HRO_PNG_UDP_PORT  = 50001;
 
     const int liveSocket =
         ::socket(AF_INET, SOCK_DGRAM, 0);
@@ -103,10 +127,27 @@ int main()
         return 1;
     }
 
+    sockaddr_in pngAddress{};
+    pngAddress.sin_family = AF_INET;
+    pngAddress.sin_port = htons(HRO_PNG_UDP_PORT);
+
+    if (::inet_pton(
+        AF_INET,
+        "127.0.0.1",
+        &pngAddress.sin_addr) != 1)
+    {
+        std::cerr << "ERROR: Invalid PNG destination address\n";
+        ::close(liveSocket);
+        return 1;
+    }
+
     std::cout
         << "LIVE UDP destination: 127.0.0.1:"
-        << HRO_LIVE_UDP_PORT
-        << '\n';
+        << HRO_LIVE_UDP_PORT << '\n';
+
+    std::cout
+        << "PNG UDP destination: 127.0.0.1:"
+        << HRO_PNG_UDP_PORT << '\n';
 
     uint64_t liveSequence = 0;
 
@@ -138,12 +179,33 @@ int main()
         return 1;
     }
 
-    if (!sdr.setCenterFrequency(
-            static_cast<uint32_t>(config.frequency_hz)))
+    constexpr uint32_t RTL_SAMPLE_RATE = 960000;
+    constexpr uint32_t FS4_HZ = RTL_SAMPLE_RATE / 4U;
+
+    const uint32_t target_frequency_hz =
+        static_cast<uint32_t>(config.frequency_hz);
+
+    const uint32_t lo_frequency_hz =
+        target_frequency_hz + FS4_HZ;
+
+    if (!sdr.setCenterFrequency(lo_frequency_hz))
     {
         std::cerr << "ERROR: Failed to set center frequency\n";
         return 1;
     }
+
+    std::cout
+        << "Target RF: " << target_frequency_hz << " Hz\n"
+        << "RTL-SDR LO: " << lo_frequency_hz << " Hz\n"
+        << "Fs/4 shift: +" << FS4_HZ << " Hz\n";
+
+    if (!sdr.setTunerGain(402))
+    {
+        std::cerr << "ERROR: Failed to set RTL-SDR tuner gain\n";
+        return 1;
+    }
+
+    std::cout << "RTL-SDR tuner gain: 40.2 dB (manual)\n";
 
     if (!sdr.resetBuffer())
     {
@@ -152,8 +214,17 @@ int main()
     }
 
     std::vector<uint8_t> rawBuffer(BUFFER_SIZE);
+
     std::vector<std::complex<float>> iqBuffer;
     iqBuffer.reserve(BUFFER_SIZE / 2);
+
+    // RTL-SDR acquisition -> DSP queue
+    std::deque<std::vector<uint8_t>> rawQueue;
+    std::mutex rawQueueMutex;
+    std::condition_variable rawQueueCv;
+    std::atomic<bool> acquisitionRunning{true};
+
+    constexpr std::size_t MAX_RAW_QUEUE = 4;
 
     hro::dsp::Fs4Rotator fs4Rotator;
     hro::dsp::Decimator15 decimator;
@@ -162,7 +233,7 @@ int main()
     hro::dsp::NcoShifter ncoShifter(64000.0);
 
     ncoShifter.setFrequencyShift(
-        -static_cast<double>(config.fft_center_hz)
+        static_cast<double>(config.fft_center_hz)
     );
 
     hro::dsp::Resampler16_125 resampler;
@@ -175,16 +246,87 @@ int main()
     std::uint64_t totalResampledSamples = 0;
 
     std::cout << "RTL-SDR acquisition started.\n";
+    const auto acquisitionStart =
+        std::chrono::steady_clock::now();
 
-    while (true)
+    std::atomic<uint64_t> rawQueueOverflowCount{0};
+
+    std::thread acquisitionThread([&]()
+    {
+        std::vector<uint8_t> acquisitionBuffer(BUFFER_SIZE);
+
+        while (acquisitionRunning)
+        {
+            int bytesRead = 0;
+
+            if (!sdr.read(acquisitionBuffer, bytesRead))
+            {
+                std::cerr << "ERROR: RTL-SDR read failed\n";
+                acquisitionRunning = false;
+                rawQueueCv.notify_all();
+                break;
+            }
+
+            if (bytesRead <= 0)
+                continue;
+
+            std::vector<uint8_t> block(
+                acquisitionBuffer.begin(),
+                acquisitionBuffer.begin() + bytesRead
+            );
+
+            {
+                std::lock_guard<std::mutex> lock(rawQueueMutex);
+
+                // Observation must stay real-time.
+                // Never allow an unlimited backlog.
+                if (rawQueue.size() >= MAX_RAW_QUEUE)
+                {
+                    rawQueue.pop_front();
+                    ++rawQueueOverflowCount;
+
+                    std::cerr
+                        << "WARNING: Raw queue overflow - oldest block dropped"
+                        << "  count=" << rawQueueOverflowCount.load()
+                        << '\n';
+                }
+
+                rawQueue.push_back(std::move(block));
+            }
+
+            rawQueueCv.notify_one();
+        }
+    });
+
+    while (!g_stopRequested)
     {
         int bytesRead = 0;
 
-        if (!sdr.read(rawBuffer, bytesRead))
+        const auto readStart =
+            std::chrono::steady_clock::now();
+
         {
-            std::cerr << "ERROR: RTL-SDR read failed\n";
-            return 1;
+            std::unique_lock<std::mutex> lock(rawQueueMutex);
+
+            rawQueueCv.wait(lock, [&]()
+            {
+                return !rawQueue.empty() || !acquisitionRunning;
+            });
+
+            if (rawQueue.empty() && !acquisitionRunning)
+            {
+                std::cerr << "ERROR: RTL-SDR acquisition stopped\n";
+                break;
+            }
+
+            rawBuffer = std::move(rawQueue.front());
+            rawQueue.pop_front();
         }
+
+        bytesRead = static_cast<int>(rawBuffer.size());
+
+        const auto readEnd =
+            std::chrono::steady_clock::now();
 
         iqBuffer.clear();
 
@@ -192,6 +334,7 @@ int main()
             static_cast<std::size_t>(bytesRead) / 2;
 
         iqBuffer.resize(sampleCount);
+        const auto t0 = std::chrono::steady_clock::now();
 
         for (std::size_t i = 0; i < sampleCount; ++i)
         {
@@ -203,11 +346,13 @@ int main()
 
             iqBuffer[i] = std::complex<float>(I, Q);
         }
+        const auto t1 = std::chrono::steady_clock::now();
 
         fs4Rotator.process(
             iqBuffer.data(),
             iqBuffer.size()
         );
+        const auto t2 = std::chrono::steady_clock::now();
 
         decimatedBuffer.clear();
 
@@ -216,11 +361,13 @@ int main()
             iqBuffer.size(),
             decimatedBuffer
         );
+        const auto t3 = std::chrono::steady_clock::now();
 
         ncoShifter.process(
             decimatedBuffer.data(),
             decimatedBuffer.size()
         );
+        const auto t4 = std::chrono::steady_clock::now();
 
         resampledBuffer.clear();
 
@@ -229,6 +376,35 @@ int main()
             decimatedBuffer.size(),
             resampledBuffer
         );
+        const auto t5 = std::chrono::steady_clock::now();
+
+        auto ms = [](auto a, auto b) {
+            return std::chrono::duration<double, std::milli>(b - a).count();
+        };
+
+        std::cout
+            << "\nIQ="        << ms(t0, t1) << " ms"
+            << "  Fs4="      << ms(t1, t2) << " ms"
+            << "  Decimator=" << ms(t2, t3) << " ms"
+            << "  NCO="      << ms(t3, t4) << " ms"
+            << "  Resampler=" << ms(t4, t5) << " ms"
+            << '\n';
+
+        const auto dspEnd =
+            std::chrono::steady_clock::now();
+
+        const double readMs =
+            std::chrono::duration<double, std::milli>(
+                readEnd - readStart).count();
+
+        const double dspMs =
+            std::chrono::duration<double, std::milli>(
+                dspEnd - readEnd).count();
+
+        std::cout
+            << "\nREAD=" << readMs << " ms"
+            << "  DSP=" << dspMs << " ms"
+            << '\n';
 
         for (const auto& sample : resampledBuffer)
         {
@@ -261,15 +437,16 @@ int main()
                 std::vector<std::complex<float>> displaySpectrum;
                 displaySpectrum.reserve(DISPLAY_BINS);
 
-                for (int frequency = -DISPLAY_RANGE_HZ;
-                    frequency <= DISPLAY_RANGE_HZ;
-                    ++frequency)
-                {
-                    const int bin =
-                        (frequency >= 0)
-                            ? frequency
-                            : FFT_SIZE + frequency;
+                const int displayStartBin =
+                    config.fft_center_hz - DISPLAY_RANGE_HZ;
 
+                const int displayEndBin =
+                    config.fft_center_hz + DISPLAY_RANGE_HZ;
+
+                for (int bin = displayStartBin;
+                    bin <= displayEndBin;
+                    ++bin)
+                {
                     displaySpectrum.push_back(
                         fftBuffer[static_cast<std::size_t>(bin)]
                     );
@@ -285,21 +462,17 @@ int main()
 
                 fftInputBuffer.clear();
 
-                constexpr float HANN_COHERENT_GAIN = 0.5f;
-                constexpr float FFT_NORMALIZATION =
-                    static_cast<float>(FFT_SIZE) * HANN_COHERENT_GAIN;
-
                 std::vector<float> displayDb;
                 displayDb.reserve(DISPLAY_BINS);
 
                 for (const auto& value : displaySpectrum)
                 {
-                    const float magnitude =
-                        std::abs(value) / FFT_NORMALIZATION;
+                    const float power =
+                        std::norm(value);
 
                     const float db =
-                        20.0f * std::log10(
-                            std::max(magnitude, 1.0e-12f)
+                        10.0f * std::log10(
+                            power + 1.0e-20f
                         );
 
                     displayDb.push_back(db);
@@ -361,6 +534,39 @@ int main()
                     livePacket.data() + 6,
                     static_cast<uint16_t>(displayDb.size()));
 
+                    const auto debugNow = std::chrono::system_clock::now();
+                    const std::time_t debugTime =
+                        std::chrono::system_clock::to_time_t(debugNow);
+
+                    std::tm debugTm{};
+                    localtime_r(&debugTime, &debugTm);
+
+                    std::cout
+                        << std::put_time(&debugTm, "%H:%M:%S")
+                        << "  seq=" << liveSequence
+                        << '\n';
+
+                    const double elapsedSec =
+                        std::chrono::duration<double>(
+                            std::chrono::steady_clock::now() - acquisitionStart
+                        ).count();
+
+                    const double rtlSampleRate =
+                        (static_cast<double>(totalBytes) / 2.0) / elapsedSec;
+
+                    const double resampledRate =
+                        static_cast<double>(totalResampledSamples) / elapsedSec;
+
+                    std::cout
+                        << "  elapsed=" << elapsedSec
+                        << " s"
+                        << "  RTL=" << rtlSampleRate
+                        << " sample/s"
+                        << "  Resampled=" << resampledRate
+                        << " sample/s"
+                        << "  QueueOverflow=" << rawQueueOverflowCount.load()
+                        << '\n';
+
                 writeUint64BE(
                     livePacket.data() + 8,
                     liveSequence++);
@@ -392,7 +598,7 @@ int main()
                         displayDb[i]);
                 }
 
-                const ssize_t sent =
+                const ssize_t liveSent =
                     ::sendto(
                         liveSocket,
                         livePacket.data(),
@@ -401,11 +607,27 @@ int main()
                         reinterpret_cast<const sockaddr*>(&liveAddress),
                         sizeof(liveAddress));
 
-                if (sent != static_cast<ssize_t>(livePacket.size()))
+                if (liveSent != static_cast<ssize_t>(livePacket.size()))
                 {
                     std::cerr
                         << "WARNING: LIVE UDP send failed\n";
                 }
+/*
+                const ssize_t pngSent =
+                    ::sendto(
+                        liveSocket,
+                        livePacket.data(),
+                        livePacket.size(),
+                        0,
+                        reinterpret_cast<const sockaddr*>(&pngAddress),
+                        sizeof(pngAddress));
+
+                if (pngSent != static_cast<ssize_t>(livePacket.size()))
+                {
+                    std::cerr
+                        << "WARNING: PNG UDP send failed\n";
+                }
+*/
             }           
         }        
 
@@ -423,6 +645,20 @@ int main()
             << totalResampledSamples
             << std::flush;
     }
+
+    std::cout << "\nStopping HRO engine...\n";
+
+    acquisitionRunning = false;
+    rawQueueCv.notify_all();
+
+    if (acquisitionThread.joinable())
+    {
+        acquisitionThread.join();
+    }
+
+    ::close(liveSocket);
+
+    std::cout << "HRO engine stopped.\n";
 
     return 0;
 }
