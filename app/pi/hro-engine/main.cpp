@@ -11,6 +11,8 @@
 #include <iostream>
 #include <vector>
 #include <complex>
+#include <cmath>
+#include <algorithm>
 
 int main()
 {
@@ -161,12 +163,97 @@ int main()
                     return 1;
                 }
 
+                constexpr int DISPLAY_RANGE_HZ = 250;
+                constexpr int FFT_SIZE = 8192;
+                constexpr int DISPLAY_BINS = DISPLAY_RANGE_HZ * 2 + 1;
+
+                std::vector<std::complex<float>> displaySpectrum;
+                displaySpectrum.reserve(DISPLAY_BINS);
+
+                for (int frequency = -DISPLAY_RANGE_HZ;
+                    frequency <= DISPLAY_RANGE_HZ;
+                    ++frequency)
+                {
+                    const int bin =
+                        (frequency >= 0)
+                            ? frequency
+                            : FFT_SIZE + frequency;
+
+                    displaySpectrum.push_back(
+                        fftBuffer[static_cast<std::size_t>(bin)]
+                    );
+                }
+
                 std::cout
                     << "\nFFT ready: "
                     << fftBuffer.size()
+                    << " bins"
+                    << "  Display: "
+                    << displaySpectrum.size()
                     << " bins\n";
 
                 fftInputBuffer.clear();
+
+                constexpr float HANN_COHERENT_GAIN = 0.5f;
+                constexpr float FFT_NORMALIZATION =
+                    static_cast<float>(FFT_SIZE) * HANN_COHERENT_GAIN;
+
+                std::vector<float> displayDb;
+                displayDb.reserve(DISPLAY_BINS);
+
+                for (const auto& value : displaySpectrum)
+                {
+                    const float magnitude =
+                        std::abs(value) / FFT_NORMALIZATION;
+
+                    const float db =
+                        20.0f * std::log10(
+                            std::max(magnitude, 1.0e-12f)
+                        );
+
+                    displayDb.push_back(db);
+                }
+
+                const auto [minIt, maxIt] =
+                    std::minmax_element(
+                        displayDb.begin(),
+                        displayDb.end()
+                    );
+
+                std::cout
+                    << "\nDisplay dB: min="
+                    << *minIt
+                    << "  max="
+                    << *maxIt
+                    << '\n';
+
+                const int peakRange =
+                    config.level_peak_range_hz;
+
+                const int centerIndex =
+                    DISPLAY_RANGE_HZ;
+
+                const int peakStart =
+                    centerIndex - peakRange;
+
+                const int peakEnd =
+                    centerIndex + peakRange;
+
+                float peakDb =
+                    displayDb[static_cast<std::size_t>(peakStart)];
+
+                for (int i = peakStart + 1; i <= peakEnd; ++i)
+                {
+                    peakDb = std::max(
+                        peakDb,
+                        displayDb[static_cast<std::size_t>(i)]
+                    );
+                }
+                
+                std::cout
+                    << "Peak dB: "
+                    << peakDb
+                    << '\n';
             }           
         }        
 
