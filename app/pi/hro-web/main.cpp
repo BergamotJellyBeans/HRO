@@ -17,6 +17,7 @@
 #include <deque>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -791,6 +792,14 @@ int main()
             res.set_content(buffer.str(), "text/html");
         });
 
+    server.Get("/archive",
+        [](const httplib::Request&, httplib::Response& res)
+        {
+            res.set_file_content(
+                "ui/web/archive.html",
+                "text/html");
+        });
+
     server.Get("/assets/radio_meteor_observation_base_1280x720.png",
         [](const httplib::Request&, httplib::Response& res)
         {
@@ -829,6 +838,241 @@ int main()
             buffer << file.rdbuf();
 
             res.set_content(buffer.str(), "font/ttf");
+        });
+
+    server.Get(R"(/archive/image/(.+\.png))",
+        [](const httplib::Request& req, httplib::Response& res)
+        {
+            namespace fs = std::filesystem;
+
+            const std::string filename = req.matches[1];
+
+            // ファイル名だけを許可する
+            if (filename.find('/') != std::string::npos ||
+                filename.find('\\') != std::string::npos ||
+                filename.find("..") != std::string::npos)
+            {
+                res.status = 400;
+                res.set_content("Invalid filename\n", "text/plain");
+                return;
+            }
+
+            const fs::path archiveRoot = "/mnt/hro/png";
+            fs::path foundPath;
+
+            try
+            {
+                for (const auto& entry :
+                     fs::recursive_directory_iterator(archiveRoot))
+                {
+                    if (!entry.is_regular_file())
+                        continue;
+
+                    if (entry.path().filename() == filename)
+                    {
+                        foundPath = entry.path();
+                        break;
+                    }
+                }
+
+                if (foundPath.empty())
+                {
+                    res.status = 404;
+                    res.set_content("Archive image not found\n", "text/plain");
+                    return;
+                }
+
+                res.set_file_content(
+                    foundPath.string(),
+                    "image/png");
+            }
+            catch (const std::exception& e)
+            {
+                res.status = 500;
+                res.set_content(e.what(), "text/plain");
+            }
+        });
+
+    server.Get("/api/archive/latest",
+        [](const httplib::Request&, httplib::Response& res)
+        {
+            namespace fs = std::filesystem;
+
+            const fs::path archiveRoot = "/mnt/hro/png";
+
+            fs::path latestPng;
+            std::string latestName;
+
+            try
+            {
+                if (!fs::exists(archiveRoot))
+                {
+                    res.status = 404;
+                    res.set_content(
+                        "{\"error\":\"Archive directory not found\"}\n",
+                        "application/json");
+                    return;
+                }
+
+                for (const auto& entry :
+                     fs::recursive_directory_iterator(archiveRoot))
+                {
+                    if (!entry.is_regular_file())
+                        continue;
+
+                    const fs::path& path = entry.path();
+
+                    if (path.extension() != ".png")
+                        continue;
+
+                    const std::string name =
+                        path.filename().string();
+                    
+                    if (name.rfind("._", 0) == 0)
+                        continue;
+
+                    // Example:
+                    // BJ202610010800.png
+                    //
+                    // Filename ordering is chronological because
+                    // YYYYMMDDHHMM is embedded in the name.
+                    if (latestName.empty() || name > latestName)
+                    {
+                        latestName = name;
+                        latestPng = path;
+                    }
+                }
+
+                if (latestName.empty())
+                {
+                    res.status = 404;
+                    res.set_content(
+                        "{\"error\":\"No archive PNG found\"}\n",
+                        "application/json");
+                    return;
+                }
+
+                fs::path latestJson = latestPng;
+                latestJson.replace_extension(".json");
+
+                json result;
+
+                result["png_file"] =
+                    latestPng.filename().string();
+
+                result["json_file"] =
+                    latestJson.filename().string();
+
+                result["png_path"] =
+                    latestPng.string();
+
+                result["json_path"] =
+                    latestJson.string();
+
+                result["json_exists"] =
+                    fs::exists(latestJson);
+
+                res.set_content(
+                    result.dump(2) + "\n",
+                    "application/json");
+            }
+            catch (const std::exception& e)
+            {
+                json result;
+                result["error"] = e.what();
+
+                res.status = 500;
+                res.set_content(
+                    result.dump(2) + "\n",
+                    "application/json");
+            }
+        });
+
+    server.Get("/api/archive/list",
+        [](const httplib::Request&, httplib::Response& res)
+        {
+            namespace fs = std::filesystem;
+
+            const fs::path archiveRoot = "/mnt/hro/png";
+
+            try
+            {
+                std::vector<fs::path> files;
+
+                if (!fs::exists(archiveRoot))
+                {
+                    res.status = 404;
+                    res.set_content(
+                        "{\"error\":\"Archive directory not found\"}\n",
+                        "application/json");
+                    return;
+                }
+
+                for (const auto& entry :
+                     fs::recursive_directory_iterator(archiveRoot))
+                {
+                    if (!entry.is_regular_file())
+                        continue;
+
+                    const fs::path& path = entry.path();
+
+                if (path.extension() != ".png")
+                    continue;
+
+                const std::string filename =
+                    path.filename().string();
+
+                // macOS AppleDouble file は除外
+                if (filename.rfind("._", 0) == 0)
+                    continue;
+
+                files.push_back(path);
+             }
+
+                std::sort(
+                    files.begin(),
+                    files.end(),
+                    [](const fs::path& a, const fs::path& b)
+                    {
+                        return a.filename().string() <
+                               b.filename().string();
+                    });
+
+                json result = json::array();
+
+                for (const auto& path : files)
+                {
+                    fs::path jsonPath = path;
+                    jsonPath.replace_extension(".json");
+
+                    json item;
+
+                    item["png_file"] =
+                        path.filename().string();
+
+                    item["json_file"] =
+                        jsonPath.filename().string();
+
+                    item["json_exists"] =
+                        fs::exists(jsonPath);
+
+                    result.push_back(item);
+                }
+
+                res.set_content(
+                    result.dump(2) + "\n",
+                    "application/json");
+            }
+            catch (const std::exception& e)
+            {
+                json result;
+                result["error"] = e.what();
+
+                res.status = 500;
+                res.set_content(
+                    result.dump(2) + "\n",
+                    "application/json");
+            }
         });
 
     server.Get("/api/config",

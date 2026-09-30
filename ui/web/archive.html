@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pi5-HRO Archive Viewer</title>
+
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    background: #000;
+    color: #00dfff;
+    font-family: Arial, sans-serif;
+}
+
+body {
+    text-align: center;
+}
+
+header {
+    padding: 16px;
+}
+
+h1 {
+    margin: 0 0 10px 0;
+    font-size: 24px;
+}
+
+#archiveImage {
+    display: block;
+    width: min(1280px, 100vw);
+    height: auto;
+    margin: 0 auto;
+}
+
+#navigation {
+    margin: 12px 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+}
+
+#navigation button {
+    padding: 7px 16px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+#navigation button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+#status {
+    min-width: 220px;
+    margin: 0;
+}
+
+a {
+    color: #00dfff;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>Pi5-HRO Archive Viewer</h1>
+    <a href="/monitor">LIVE Monitor</a>
+</header>
+
+<div id="navigation">
+    <button id="previousButton">◀ Previous</button>
+    <span id="status">Loading latest observation...</span>
+    <button id="nextButton">Next ▶</button>
+</div>
+
+<img id="archiveImage" alt="HRO archive image">
+
+<script>
+    let archiveList = [];
+    let currentIndex = -1;
+
+    function showArchive(index)
+    {
+        if (index < 0 || index >= archiveList.length)
+            return;
+
+        currentIndex = index;
+
+        const item = archiveList[currentIndex];
+
+        document.getElementById('status').textContent =
+            item.png_file;
+
+        document.getElementById('archiveImage').src =
+            '/archive/image/' +
+            encodeURIComponent(item.png_file);
+
+        document.getElementById('previousButton').disabled =
+            currentIndex <= 0;
+
+        document.getElementById('nextButton').disabled =
+            currentIndex >= archiveList.length - 1;
+    }
+
+    async function loadArchive()
+    {
+        const status =
+            document.getElementById('status');
+
+        try
+        {
+            const response =
+                await fetch('/api/archive/list');
+
+            if (!response.ok)
+                throw new Error(
+                    `HTTP ${response.status}`
+                );
+
+            archiveList =
+                await response.json();
+
+            if (archiveList.length === 0)
+            {
+                status.textContent =
+                    'No archive data.';
+                return;
+            }
+
+            // 最新の完成済み観測を表示
+            showArchive(
+                archiveList.length - 1
+            );
+        }
+        catch (error)
+        {
+            console.error(error);
+
+            status.textContent =
+                'Failed to load archive.';
+        }
+    }
+
+    document.getElementById('previousButton').onclick =
+        () =>
+        {
+            showArchive(currentIndex - 1);
+        };
+
+    document.getElementById('nextButton').onclick =
+        () =>
+        {
+            showArchive(currentIndex + 1);
+        };
+
+    loadArchive();
+</script>
+
+</body>
+</html>

@@ -44,7 +44,29 @@ body {
 
     font-family: 'HRO-Nunito', sans-serif;
     color: #00dfff;
+
+    transform-origin: top left;
+    box-sizing: border-box;
 }
+
+#audioControls .audioTitle {
+    position: absolute;
+    top: 10px;
+    left: 0;
+    width: 100%;
+
+    text-align: center;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+#audioControls .audioButtons {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+}
+
+
 
 #audioControls button {
     width: 70px;
@@ -68,6 +90,8 @@ body {
 <canvas id="monitor" width="1280" height="720"></canvas>
 
 <div id="audioControls">
+    <div class="audioTitle">Audio Control</div>
+
     <div class="audioButtons">
         <button id="audioOnButton">ON</button>
         <button id="audioOffButton">OFF</button>
@@ -851,29 +875,32 @@ function positionAudioControls()
 
     const r = canvas.getBoundingClientRect();
 
-    // Canvas内部の1280x720座標を
-    // 実際のブラウザ表示座標へ変換
-    const sx = r.width / 1280;
-    const sy = r.height / 720;
+    // 1280x720を基準とした表示倍率
+    const scale = r.width / 1280;
 
-    // 右下のAudio枠
-    const x = 1000;
-    const y = 530;
-    const w = 245;
-    const h = 135;
+    // Audio操作領域（1280x720基準座標）
+    const x = 1014;
+    const y = 520;
+    const w = 250;
+    const h = 144;
 
+    // 位置だけ実画面座標へ変換
     controls.style.left =
-        (r.left + x * sx) + 'px';
+        (r.left + x * scale) + 'px';
 
     controls.style.top =
-        (r.top + y * sy) + 'px';
+        (r.top + y * scale) + 'px';
 
-    controls.style.width =
-        (w * sx) + 'px';
+    // Audio領域自体は1280x720基準サイズのまま
+    controls.style.width = w + 'px';
+    controls.style.height = h + 'px';
 
-    controls.style.height =
-        (h * sy) + 'px';
+    // 中身を含めて全部まとめて拡大縮小
+    controls.style.transform =
+        `scale(${scale})`;
 }
+
+window.addEventListener('resize', positionAudioControls);
 
 baseImage.onload = async () =>
 {
