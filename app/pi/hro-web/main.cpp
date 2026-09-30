@@ -417,6 +417,156 @@ private:
     uint64_t sequence_ = 0;
 };
 
+class AudioWebSocketServer
+{
+public:
+    using Server =
+        websocketpp::server<websocketpp::config::asio>;
+
+    static constexpr std::size_t MAX_AUDIO_CLIENTS = 8;
+
+    using ConnectionSet =
+        std::set<
+            websocketpp::connection_hdl,
+            std::owner_less<websocketpp::connection_hdl>
+        >;
+
+    AudioWebSocketServer()
+    {
+        server_.clear_access_channels(
+            websocketpp::log::alevel::all);
+
+        server_.clear_error_channels(
+            websocketpp::log::elevel::all);
+
+        server_.init_asio();
+
+        server_.set_open_handler(
+            [this](websocketpp::connection_hdl hdl)
+            {
+                if (clients_.size() >= MAX_AUDIO_CLIENTS)
+                {
+                    server_.close(
+                        hdl,
+                        websocketpp::close::status::try_again_later,
+                        "Maximum AUDIO clients reached"
+                    );
+
+                    return;
+                }
+
+                clients_.insert(hdl);
+
+                std::cout
+                    << "AUDIO client connected ("
+                    << clients_.size()
+                    << "/"
+                    << MAX_AUDIO_CLIENTS
+                    << ")\n";
+            });
+
+        server_.set_close_handler(
+            [this](websocketpp::connection_hdl hdl)
+            {
+                clients_.erase(hdl);
+
+                std::cout
+                    << "AUDIO client disconnected ("
+                    << clients_.size()
+                    << "/"
+                    << MAX_AUDIO_CLIENTS
+                    << ")\n";
+            });
+    }
+
+    void sendAudio(
+        const std::vector<uint8_t>& data)
+    {
+        for (const auto& hdl : clients_)
+        {
+            websocketpp::lib::error_code ec;
+
+            server_.send(
+                hdl,
+                data.data(),
+                data.size(),
+                websocketpp::frame::opcode::binary,
+                ec
+            );
+
+            if (ec)
+            {
+                std::cerr
+                    << "AUDIO send error: "
+                    << ec.message()
+                    << '\n';
+            }
+        }
+    }
+
+    void postAudio(
+        std::vector<uint8_t> data)
+    {
+        server_.get_io_service().post(
+            [this,
+             data = std::move(data)]() mutable
+            {
+                sendAudio(data);
+            });
+    }
+
+    void run(uint16_t port)
+    {
+        websocketpp::lib::error_code ec;
+
+        server_.set_reuse_addr(true);
+
+        std::cout
+            << "AUDIO: listen("
+            << port
+            << ")\n";
+
+        server_.listen(port, ec);
+
+        if (ec)
+        {
+            std::cerr
+                << "AUDIO listen error: "
+                << ec.value()
+                << " - "
+                << ec.message()
+                << '\n';
+
+            return;
+        }
+
+        server_.start_accept(ec);
+
+        if (ec)
+        {
+            std::cerr
+                << "AUDIO start_accept error: "
+                << ec.value()
+                << " - "
+                << ec.message()
+                << '\n';
+
+            return;
+        }
+
+        std::cout
+            << "AUDIO WebSocket listening on port "
+            << port
+            << "...\n";
+
+        server_.run();
+    }
+
+private:
+    Server server_;
+    ConnectionSet clients_;
+};
+
 void runUdpReceiver(LiveWebSocketServer& liveServer)
 {
     const int sock =
@@ -498,9 +648,92 @@ void runUdpReceiver(LiveWebSocketServer& liveServer)
     ::close(sock);
 }
 
+void runAudioUdpReceiver(AudioWebSocketServer& audioServer)
+{
+    constexpr uint16_t HRO_AUDIO_UDP_PORT = 50002;
+    constexpr std::size_t AUDIO_PACKET_SIZE =
+        256 * sizeof(float);
+
+    const int sock =
+        ::socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (sock < 0)
+    {
+        std::cerr
+            << "AUDIO UDP socket creation failed\n";
+        return;
+    }
+
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_ANY);
+    address.sin_port = htons(HRO_AUDIO_UDP_PORT);
+
+    if (::bind(
+            sock,
+            reinterpret_cast<sockaddr*>(&address),
+            sizeof(address)) < 0)
+    {
+        std::cerr
+            << "AUDIO UDP bind failed on port "
+            << HRO_AUDIO_UDP_PORT
+            << "\n";
+
+        ::close(sock);
+        return;
+    }
+
+    std::cout
+        << "AUDIO UDP listening on port "
+        << HRO_AUDIO_UDP_PORT
+        << "...\n";
+
+    std::vector<uint8_t> buffer(
+        AUDIO_PACKET_SIZE);
+
+    while (true)
+    {
+        const ssize_t received =
+            ::recvfrom(
+                sock,
+                buffer.data(),
+                buffer.size(),
+                0,
+                nullptr,
+                nullptr);
+
+        if (received < 0)
+        {
+            std::cerr
+                << "AUDIO UDP receive error\n";
+            continue;
+        }
+
+        if (received !=
+            static_cast<ssize_t>(AUDIO_PACKET_SIZE))
+        {
+            std::cerr
+                << "Invalid AUDIO UDP packet: "
+                << received
+                << " bytes\n";
+            continue;
+        }
+
+        std::vector<uint8_t> audioData(
+            buffer.begin(),
+            buffer.begin() + received);
+
+        audioServer.postAudio(
+            std::move(audioData));
+    }
+
+    ::close(sock);
+}
+
 int main()
 {
     LiveWebSocketServer liveServer;
+    AudioWebSocketServer audioServer;
 
     std::thread liveThread(
         [&liveServer]()
@@ -512,6 +745,18 @@ int main()
         [&liveServer]()
         {
             runUdpReceiver(liveServer);
+        });
+
+    std::thread audioThread(
+        [&audioServer]()
+        {
+            audioServer.run(8082);
+        });
+
+    std::thread audioUdpThread(
+        [&audioServer]()
+        {
+            runAudioUdpReceiver(audioServer);
         });
 
     httplib::Server server;
@@ -546,11 +791,11 @@ int main()
             res.set_content(buffer.str(), "text/html");
         });
 
-    server.Get("/assets/radio_meteor_observation_base.png",
+    server.Get("/assets/radio_meteor_observation_base_1280x720.png",
         [](const httplib::Request&, httplib::Response& res)
         {
             std::ifstream file(
-                "ui/assets/radio_meteor_observation_base.png",
+                "ui/assets/radio_meteor_observation_base_1280x720.png",
                 std::ios::binary);
 
             if (!file.is_open())

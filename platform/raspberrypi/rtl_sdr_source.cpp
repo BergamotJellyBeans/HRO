@@ -44,6 +44,20 @@ bool RtlSdrSource::setCenterFrequency(uint32_t frequencyHz)
     return rtlsdr_set_center_freq(device_, frequencyHz) == 0;
 }
 
+bool RtlSdrSource::setTunerGain(int gainTenthsDb)
+{
+    if (device_ == nullptr) {
+        return false;
+    }
+
+    // Manual tuner gain mode
+    if (rtlsdr_set_tuner_gain_mode(device_, 1) != 0) {
+        return false;
+    }
+
+    return rtlsdr_set_tuner_gain(device_, gainTenthsDb) == 0;
+}
+
 bool RtlSdrSource::resetBuffer()
 {
     if (device_ == nullptr) {

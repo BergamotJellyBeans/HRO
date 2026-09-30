@@ -101,8 +101,10 @@ int main()
 
     constexpr uint32_t SAMPLE_RATE = 960000;
     constexpr std::size_t BUFFER_SIZE = 262144;
-    constexpr uint16_t HRO_LIVE_UDP_PORT = 50000;
-    constexpr uint16_t HRO_PNG_UDP_PORT  = 50001;
+
+    constexpr uint16_t HRO_LIVE_UDP_PORT  = 50000;
+    constexpr uint16_t HRO_PNG_UDP_PORT   = 50001;
+    constexpr uint16_t HRO_AUDIO_UDP_PORT = 50002;
 
     const int liveSocket =
         ::socket(AF_INET, SOCK_DGRAM, 0);
@@ -141,6 +143,20 @@ int main()
         return 1;
     }
 
+    sockaddr_in audioAddress{};
+    audioAddress.sin_family = AF_INET;
+    audioAddress.sin_port = htons(HRO_AUDIO_UDP_PORT);
+
+    if (::inet_pton(
+        AF_INET,
+        "127.0.0.1",
+        &audioAddress.sin_addr) != 1)
+    {
+        std::cerr << "ERROR: Invalid AUDIO destination address\n";
+        ::close(liveSocket);
+        return 1;
+    }
+
     std::cout
         << "LIVE UDP destination: 127.0.0.1:"
         << HRO_LIVE_UDP_PORT << '\n';
@@ -148,6 +164,10 @@ int main()
     std::cout
         << "PNG UDP destination: 127.0.0.1:"
         << HRO_PNG_UDP_PORT << '\n';
+
+    std::cout
+        << "AUDIO UDP destination: 127.0.0.1:"
+        << HRO_AUDIO_UDP_PORT << '\n';
 
     uint64_t liveSequence = 0;
 
@@ -240,6 +260,10 @@ int main()
     std::vector<std::complex<float>> resampledBuffer;
     std::vector<std::complex<float>> fftInputBuffer;
     fftInputBuffer.reserve(8192);
+
+    constexpr std::size_t AUDIO_PACKET_SAMPLES = 256;
+    std::array<float, AUDIO_PACKET_SAMPLES> audioBuffer{};
+    std::size_t audioBufferCount = 0;
 
     std::uint64_t totalBytes = 0;
     std::uint64_t totalDecimatedSamples = 0;
@@ -381,7 +405,7 @@ int main()
         auto ms = [](auto a, auto b) {
             return std::chrono::duration<double, std::milli>(b - a).count();
         };
-
+#if 0
         std::cout
             << "\nIQ="        << ms(t0, t1) << " ms"
             << "  Fs4="      << ms(t1, t2) << " ms"
@@ -389,7 +413,7 @@ int main()
             << "  NCO="      << ms(t3, t4) << " ms"
             << "  Resampler=" << ms(t4, t5) << " ms"
             << '\n';
-
+#endif
         const auto dspEnd =
             std::chrono::steady_clock::now();
 
@@ -400,14 +424,47 @@ int main()
         const double dspMs =
             std::chrono::duration<double, std::milli>(
                 dspEnd - readEnd).count();
-
+#if 0
         std::cout
             << "\nREAD=" << readMs << " ms"
             << "  DSP=" << dspMs << " ms"
             << '\n';
-
+#endif
         for (const auto& sample : resampledBuffer)
         {
+            // --------------------------------------------------------
+            // Web Audio
+            // --------------------------------------------------------
+
+            audioBuffer[audioBufferCount++] =
+                sample.real();
+
+            if (audioBufferCount == AUDIO_PACKET_SAMPLES)
+            {
+                const ssize_t audioSent =
+                    ::sendto(
+                        liveSocket,
+                        audioBuffer.data(),
+                        audioBuffer.size() * sizeof(float),
+                        0,
+                        reinterpret_cast<const sockaddr*>(&audioAddress),
+                        sizeof(audioAddress));
+
+                if (audioSent !=
+                    static_cast<ssize_t>(
+                        audioBuffer.size() * sizeof(float)))
+                {
+                    std::cerr
+                        << "WARNING: AUDIO UDP send failed\n";
+                }
+
+                audioBufferCount = 0;
+            }
+
+            // --------------------------------------------------------
+            // Existing FFT
+            // --------------------------------------------------------
+
             fftInputBuffer.push_back(sample);
 
             if (fftInputBuffer.size() == 8192)
@@ -451,7 +508,7 @@ int main()
                         fftBuffer[static_cast<std::size_t>(bin)]
                     );
                 }
-
+#if 0
                 std::cout
                     << "\nFFT ready: "
                     << fftBuffer.size()
@@ -459,7 +516,7 @@ int main()
                     << "  Display: "
                     << displaySpectrum.size()
                     << " bins\n";
-
+#endif
                 fftInputBuffer.clear();
 
                 std::vector<float> displayDb;
@@ -483,14 +540,14 @@ int main()
                         displayDb.begin(),
                         displayDb.end()
                     );
-
+#if 0
                 std::cout
                     << "\nDisplay dB: min="
                     << *minIt
                     << "  max="
                     << *maxIt
                     << '\n';
-
+#endif
                 const int peakRange =
                     config.level_peak_range_hz;
 
@@ -513,12 +570,12 @@ int main()
                         displayDb[static_cast<std::size_t>(i)]
                     );
                 }
-
+#if 0
                 std::cout
                     << "Peak dB: "
                     << peakDb
                     << '\n';
-
+#endif
                 std::vector<uint8_t> livePacket(
                     HRO_LIVE_PACKET_SIZE);
 
@@ -540,12 +597,12 @@ int main()
 
                     std::tm debugTm{};
                     localtime_r(&debugTime, &debugTm);
-
+#if 0
                     std::cout
                         << std::put_time(&debugTm, "%H:%M:%S")
                         << "  seq=" << liveSequence
                         << '\n';
-
+#endif
                     const double elapsedSec =
                         std::chrono::duration<double>(
                             std::chrono::steady_clock::now() - acquisitionStart
@@ -556,7 +613,7 @@ int main()
 
                     const double resampledRate =
                         static_cast<double>(totalResampledSamples) / elapsedSec;
-
+#if 0
                     std::cout
                         << "  elapsed=" << elapsedSec
                         << " s"
@@ -566,7 +623,7 @@ int main()
                         << " sample/s"
                         << "  QueueOverflow=" << rawQueueOverflowCount.load()
                         << '\n';
-
+#endif
                 writeUint64BE(
                     livePacket.data() + 8,
                     liveSequence++);
@@ -612,7 +669,7 @@ int main()
                     std::cerr
                         << "WARNING: LIVE UDP send failed\n";
                 }
-/*
+
                 const ssize_t pngSent =
                     ::sendto(
                         liveSocket,
@@ -627,14 +684,13 @@ int main()
                     std::cerr
                         << "WARNING: PNG UDP send failed\n";
                 }
-*/
             }           
         }        
 
         totalResampledSamples += resampledBuffer.size();
         totalDecimatedSamples += decimatedBuffer.size();
         totalBytes += static_cast<std::uint64_t>(bytesRead);
-
+#if 0
         std::cout
             << "\rReceived: "
             << totalBytes
@@ -644,8 +700,8 @@ int main()
             << "  Resampled: "
             << totalResampledSamples
             << std::flush;
+#endif
     }
-
     std::cout << "\nStopping HRO engine...\n";
 
     acquisitionRunning = false;

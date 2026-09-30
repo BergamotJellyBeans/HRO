@@ -13,3 +13,4 @@ add_subdirectory(tests)
 
 add_subdirectory(app/pi/hro-web)
 add_subdirectory(app/pi/hro-engine)
+add_subdirectory(app/pi/hro-png)

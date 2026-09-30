@@ -19,7 +19,7 @@ public:
 
     bool setSampleRate(uint32_t sampleRate);
     bool setCenterFrequency(uint32_t frequencyHz);
-
+    bool setTunerGain(int gainTenthsDb);
     bool resetBuffer();
 
     // Reads raw RTL-SDR interleaved unsigned 8-bit IQ:

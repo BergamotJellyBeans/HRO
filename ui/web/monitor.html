@@ -32,12 +32,58 @@ body {
     aspect-ratio: 16 / 9;
     display: block;
 }
+
+#audioControls {
+    position: fixed;
+    z-index: 10;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+
+    font-family: 'HRO-Nunito', sans-serif;
+    color: #00dfff;
+}
+
+#audioControls button {
+    width: 70px;
+    height: 36px;
+    font-size: 14px;
+    font-weight: 700;
+    margin: 3px;
+}
+
+#audioControls label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
 </style>
 </head>
 
 <body>
 
 <canvas id="monitor" width="1280" height="720"></canvas>
+
+<div id="audioControls">
+    <div class="audioButtons">
+        <button id="audioOnButton">ON</button>
+        <button id="audioOffButton">OFF</button>
+    </div>
+
+    <label>
+        VOL
+        <input
+            id="audioVolume"
+            type="range"
+            min="0"
+            max="4"
+            step="0.1"
+            value="1">
+    </label>
+</div>
 
 <script>
 
@@ -46,8 +92,8 @@ body {
 // ============================================================
 
 // Time-scroll area
-const SCROLL_LEFT  = 53;
-const SCROLL_RIGHT = 1253;
+const SCROLL_LEFT  = 48;
+const SCROLL_RIGHT = 1248;
 const SCROLL_TOP   = 98;
 
 // Time axis
@@ -156,6 +202,159 @@ function addLivePeakBar(peakValue)
     );
 }
 
+let audioSocket = null;
+let audioContext = null;
+let audioGain = null;
+let nextAudioTime = 0;
+
+const AUDIO_SAMPLE_RATE = 8192;
+
+async function startAudio()
+{
+    if (!audioContext)
+    {
+        audioContext = new AudioContext();
+
+        audioGain = audioContext.createGain();
+        audioGain.gain.value = 1.0;
+        audioGain.connect(audioContext.destination);
+    }
+
+    if (audioContext.state === 'suspended')
+        await audioContext.resume();
+
+    nextAudioTime = audioContext.currentTime + 0.1;
+
+    connectAudioWebSocket();
+}
+
+function stopAudio()
+{
+    if (audioSocket)
+    {
+        audioSocket.close();
+        audioSocket = null;
+    }
+
+    nextAudioTime = 0;
+}
+
+function connectAudioWebSocket()
+{
+    if (audioSocket &&
+        (audioSocket.readyState === WebSocket.OPEN ||
+         audioSocket.readyState === WebSocket.CONNECTING))
+    {
+        return;
+    }
+
+    const host = window.location.hostname;
+    const url = `ws://${host}:8082`;
+
+    console.log('Connecting AUDIO WebSocket:', url);
+
+    audioSocket = new WebSocket(url);
+    audioSocket.binaryType = 'arraybuffer';
+
+    audioSocket.onopen = () =>
+    {
+        console.log('AUDIO WebSocket connected');
+
+        if (audioContext)
+        {
+            nextAudioTime = audioContext.currentTime + 0.1;
+        }
+    };
+
+    audioSocket.onclose = (event) =>
+    {
+        console.log(
+            'AUDIO WebSocket disconnected',
+            event.code,
+            event.reason
+        );
+
+        audioSocket = null;
+    };
+
+    audioSocket.onerror = (event) =>
+    {
+        console.error('AUDIO WebSocket error', event);
+    };
+
+    audioSocket.onmessage = (event) =>
+    {
+        if (!(event.data instanceof ArrayBuffer))
+            return;
+
+        const samples = new Float32Array(event.data);
+
+        if (samples.length !== 256)
+        {
+            console.error(
+                'Invalid AUDIO packet:',
+                samples.length,
+                'samples'
+            );
+            return;
+        }
+
+        playAudioSamples(samples);
+    };
+}
+
+function playAudioSamples(samples)
+{
+    if (!audioContext || !audioGain)
+        return;
+
+    const buffer =
+        audioContext.createBuffer(
+            1,
+            samples.length,
+            AUDIO_SAMPLE_RATE
+        );
+
+    buffer.getChannelData(0).set(samples);
+
+    const source = audioContext.createBufferSource();
+
+    source.buffer = buffer;
+    source.connect(audioGain);
+
+    const now = audioContext.currentTime;
+
+    if (nextAudioTime < now ||
+        nextAudioTime > now + 0.5)
+    {
+        nextAudioTime = now + 0.1;
+    }
+
+    source.start(nextAudioTime);
+
+    nextAudioTime +=
+        samples.length / AUDIO_SAMPLE_RATE;
+}
+
+document.getElementById('audioOnButton').onclick = async () =>
+{
+    await startAudio();
+};
+
+document.getElementById('audioOffButton').onclick = () =>
+{
+    stopAudio();
+};
+
+document.getElementById('audioVolume').oninput = (event) =>
+{
+    if (audioGain)
+    {
+        audioGain.gain.value =
+            Number(event.target.value);
+    }
+};
+
 function connectLiveWebSocket()
 {
     const host = window.location.hostname;
@@ -242,46 +441,47 @@ function scrollWaterfall()
     );
 }
 
-function waterfallColor(value)
+function waterfallColor(db)
 {
-    // value: 0.0 ～ 1.0
-    value = Math.max(0.0, Math.min(1.0, value));
+    const DB_MIN = -20.0;
+    const DB_MAX =  30.0;
+
+    let t = (db - DB_MIN) / (DB_MAX - DB_MIN);
+
+    t = Math.max(0.0, Math.min(1.0, t));
 
     let r = 0;
     let g = 0;
     let b = 0;
 
-    if (value < 0.25)
+    // dark blue -> blue -> cyan -> yellow -> white
+    if (t < 0.25)
     {
-        // dark blue -> blue
-        const t = value / 0.25;
+        const u = t / 0.25;
         r = 0;
-        g = 20 * t;
-        b = 80 + 175 * t;
+        g = 0;
+        b = 30 + 180 * u;
     }
-    else if (value < 0.50)
+    else if (t < 0.50)
     {
-        // blue -> cyan
-        const t = (value - 0.25) / 0.25;
+        const u = (t - 0.25) / 0.25;
         r = 0;
-        g = 20 + 235 * t;
-        b = 255;
+        g = 220 * u;
+        b = 220;
     }
-    else if (value < 0.75)
+    else if (t < 0.75)
     {
-        // cyan -> yellow
-        const t = (value - 0.50) / 0.25;
-        r = 255 * t;
-        g = 255;
-        b = 255 * (1.0 - t);
+        const u = (t - 0.50) / 0.25;
+        r = 255 * u;
+        g = 220;
+        b = 220 * (1.0 - u);
     }
     else
     {
-        // yellow -> red
-        const t = (value - 0.75) / 0.25;
+        const u = (t - 0.75) / 0.25;
         r = 255;
-        g = 255 * (1.0 - t);
-        b = 0;
+        g = 220 + 35 * u;
+        b = 255 * u;
     }
 
     return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
@@ -317,28 +517,6 @@ function addLiveWaterfallLine(fft)
             1,
             1
         );
-    }
-}
-
-function addTestWaterfallLine()
-{
-    scrollWaterfall();
-
-    const x = WATERFALL_SECONDS - 1;
-    const centerY = WATERFALL_HEIGHT / 2;
-
-    for (let y = 0; y < WATERFALL_HEIGHT; ++y)
-    {
-        const distance = Math.abs(y - centerY);
-
-        // 中心ほど強くするテスト信号
-        const value = Math.max(
-            0.0,
-            1.0 - distance / 35.0
-        );
-
-        waterfallCtx.fillStyle = waterfallColor(value);
-        waterfallCtx.fillRect(x, y, 1, 1);
     }
 }
 
@@ -434,8 +612,10 @@ function drawFrequencyAxis()
 
         // Tick
         ctx.beginPath();
-        ctx.moveTo(43, y);
-        ctx.lineTo(49, y);
+        ctx.moveTo(SCROLL_LEFT-5, y);
+        ctx.lineTo(SCROLL_LEFT-1, y);
+        ctx.moveTo(SCROLL_RIGHT+1, y);
+        ctx.lineTo(SCROLL_RIGHT+5, y);
         ctx.stroke();
 
         // Label
@@ -462,8 +642,8 @@ function drawLevelScale()
         const y = LEVEL_TOP + levelDbToY(db);
 
         ctx.beginPath();
-        ctx.moveTo(43, y);
-        ctx.lineTo(49, y);
+        ctx.moveTo(SCROLL_LEFT-5, y);
+        ctx.lineTo(SCROLL_LEFT-1, y);
         ctx.stroke();
 
         ctx.fillText(
@@ -661,6 +841,40 @@ function drawMonitor()
     drawTimeAxis(new Date());
 }
 
+function positionAudioControls()
+{
+    const canvas =
+        document.getElementById('monitor');
+
+    const controls =
+        document.getElementById('audioControls');
+
+    const r = canvas.getBoundingClientRect();
+
+    // Canvas内部の1280x720座標を
+    // 実際のブラウザ表示座標へ変換
+    const sx = r.width / 1280;
+    const sy = r.height / 720;
+
+    // 右下のAudio枠
+    const x = 1000;
+    const y = 530;
+    const w = 245;
+    const h = 135;
+
+    controls.style.left =
+        (r.left + x * sx) + 'px';
+
+    controls.style.top =
+        (r.top + y * sy) + 'px';
+
+    controls.style.width =
+        (w * sx) + 'px';
+
+    controls.style.height =
+        (h * sy) + 'px';
+}
+
 baseImage.onload = async () =>
 {
     try
@@ -673,7 +887,8 @@ baseImage.onload = async () =>
 
         buildStaticLayer();
         drawMonitor();
-
+        
+        positionAudioControls();
         connectLiveWebSocket();
     }
     catch (error)
@@ -682,7 +897,7 @@ baseImage.onload = async () =>
     }
 };
 
-baseImage.src = '/assets/radio_meteor_observation_base.png';
+baseImage.src = '/assets/radio_meteor_observation_base_1280x720.png';
 </script>
 
 </body>
