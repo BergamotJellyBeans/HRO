@@ -33,6 +33,93 @@ h1 {
     margin: 0 auto;
 }
 
+#selectors {
+    margin: 8px 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+}
+
+#selectors label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#selectors select {
+    padding: 4px 8px;
+    font-size: 14px;
+}
+
+#archiveListArea {
+    width: min(1280px, 96vw);
+    margin: 8px auto 0 auto;
+    text-align: left;
+
+    height: calc(100vh - 700px);
+    min-height: 180px;
+
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+#archiveListArea h2 {
+    margin: 0 0 12px 0;
+    font-size: 20px;
+}
+
+.archive-date {
+    margin-top: 14px;
+    margin-bottom: 5px;
+    font-size: 16px;
+    color: #ffffff;
+}
+
+.archive-times {
+    display: grid;
+    grid-template-columns: repeat(6, 56px);
+    column-gap: 0;
+    line-height: 18px;
+}
+
+.archive-time {
+    color: #66ff88;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.archive-time:hover {
+    color: #ffffff;
+}
+
+.archive-time.current {
+    color: #00dfff;
+    font-weight: bold;
+}
+
+.archive-missing {
+    color: #666666;
+}
+
+.archive-time,
+.archive-missing {
+    display: block;
+    width: 56px;
+    text-align: left;
+    font-family: monospace;
+}
+
+#metadata {
+    width: min(1280px, 96vw);
+    margin: 6px auto;
+    text-align: left;
+    font-family: monospace;
+    font-size: 13px;
+    line-height: 18px;
+    color: #cccccc;
+}
+
 #navigation {
     margin: 12px 0;
     display: flex;
@@ -70,6 +157,18 @@ a {
     <a href="/monitor">LIVE Monitor</a>
 </header>
 
+<div id="selectors">
+    <label>
+        Date
+        <select id="dateSelect"></select>
+    </label>
+
+    <label>
+        Time
+        <select id="timeSelect"></select>
+    </label>
+</div>
+
 <div id="navigation">
     <button id="previousButton">◀ Previous</button>
     <span id="status">Loading latest observation...</span>
@@ -78,85 +177,476 @@ a {
 
 <img id="archiveImage" alt="HRO archive image">
 
+<div id="metadata">
+    Metadata: loading...
+</div>
+
+<div id="archiveListArea">
+    <h2>画像一覧</h2>
+    <div id="archiveLinks"></div>
+</div>
+
 <script>
-    let archiveList = [];
-    let currentIndex = -1;
+let archiveList = [];
+let currentIndex = -1;
 
-    function showArchive(index)
+
+function parseArchiveFilename(filename)
+{
+    // ファイル名末尾の YYYYMMDDHHMM.png を取り出す。
+    // Station IDの長さには依存しない。
+    const match = filename.match(/(\d{12})\.png$/);
+
+    if (!match)
+        return null;
+
+    const s = match[1];
+
+    return {
+        dateKey: s.slice(0, 8),
+        dateLabel:
+            `${s.slice(0, 4)}/${s.slice(4, 6)}/${s.slice(6, 8)}`,
+        timeKey: s.slice(8, 12),
+        timeLabel:
+            `${s.slice(8, 10)}:${s.slice(10, 12)}`
+    };
+}
+
+
+function populateDates()
+{
+    const dateSelect =
+        document.getElementById('dateSelect');
+
+    dateSelect.innerHTML = '';
+
+    const seen = new Set();
+
+    for (const item of archiveList)
     {
-        if (index < 0 || index >= archiveList.length)
-            return;
+        const info =
+            parseArchiveFilename(item.png_file);
 
-        currentIndex = index;
+        if (!info)
+            continue;
 
-        const item = archiveList[currentIndex];
+        if (seen.has(info.dateKey))
+            continue;
 
-        document.getElementById('status').textContent =
-            item.png_file;
+        seen.add(info.dateKey);
 
-        document.getElementById('archiveImage').src =
-            '/archive/image/' +
-            encodeURIComponent(item.png_file);
+        const option =
+            document.createElement('option');
 
-        document.getElementById('previousButton').disabled =
-            currentIndex <= 0;
+        option.value =
+            info.dateKey;
 
-        document.getElementById('nextButton').disabled =
-            currentIndex >= archiveList.length - 1;
+        option.textContent =
+            info.dateLabel;
+
+        dateSelect.appendChild(option);
+    }
+}
+
+
+function populateTimes(dateKey, selectedIndex = -1)
+{
+    const timeSelect =
+        document.getElementById('timeSelect');
+
+    timeSelect.innerHTML = '';
+
+    for (let i = 0; i < archiveList.length; ++i)
+    {
+        const info =
+            parseArchiveFilename(
+                archiveList[i].png_file);
+
+        if (!info)
+            continue;
+
+        if (info.dateKey !== dateKey)
+            continue;
+
+        const option =
+            document.createElement('option');
+
+        option.value =
+            String(i);
+
+        option.textContent =
+            info.timeLabel;
+
+        if (i === selectedIndex)
+            option.selected = true;
+
+        timeSelect.appendChild(option);
+    }
+}
+
+
+function updateSelectors()
+{
+    if (currentIndex < 0 ||
+        currentIndex >= archiveList.length)
+        return;
+
+    const info =
+        parseArchiveFilename(
+            archiveList[currentIndex].png_file);
+
+    if (!info)
+        return;
+
+    const dateSelect =
+        document.getElementById('dateSelect');
+
+    dateSelect.value =
+        info.dateKey;
+
+    populateTimes(
+        info.dateKey,
+        currentIndex);
+}
+
+
+function updateArchiveLinkHighlight()
+{
+    const links =
+        document.querySelectorAll('.archive-time');
+
+    for (const link of links)
+    {
+        const index =
+            Number(link.dataset.index);
+
+        link.classList.toggle(
+            'current',
+            index === currentIndex);
+    }
+}
+
+
+function showArchive(index)
+{
+    if (index < 0 ||
+        index >= archiveList.length)
+        return;
+
+    currentIndex = index;
+
+    const item =
+        archiveList[currentIndex];
+
+    document.getElementById('status').textContent =
+        item.png_file;
+
+    document.getElementById('archiveImage').src =
+        '/archive/image/' +
+        encodeURIComponent(item.png_file);
+
+    loadMetadata(item);
+
+    document.getElementById('previousButton').disabled =
+        currentIndex <= 0;
+
+    document.getElementById('nextButton').disabled =
+        currentIndex >= archiveList.length - 1;
+
+    updateSelectors();
+    updateArchiveLinkHighlight();
+}
+
+
+function buildArchiveLinks()
+{
+    const area =
+        document.getElementById('archiveLinks');
+
+    area.innerHTML = '';
+
+    // 日付ごとにまとめる
+    const dateGroups = new Map();
+
+    for (let i = 0; i < archiveList.length; ++i)
+    {
+        const info =
+            parseArchiveFilename(
+                archiveList[i].png_file);
+
+        if (!info)
+            continue;
+
+        if (!dateGroups.has(info.dateKey))
+        {
+            dateGroups.set(
+                info.dateKey,
+                {
+                    label: info.dateLabel,
+                    items: new Map()
+                });
+        }
+
+        // HHMM をキーにして実在するデータを登録
+        dateGroups.get(info.dateKey).items.set(
+            info.timeKey,
+            {
+                index: i,
+                timeLabel: info.timeLabel
+            });
     }
 
-    async function loadArchive()
+
+    // 新しい日付を上に表示
+    const groups =
+        Array.from(dateGroups.entries()).reverse();
+
+
+    for (const [dateKey, group] of groups)
     {
-        const status =
-            document.getElementById('status');
+        const dateDiv =
+            document.createElement('div');
 
-        try
+        dateDiv.className =
+            'archive-date';
+
+        dateDiv.textContent =
+            group.label;
+
+        area.appendChild(dateDiv);
+
+
+        // 22時から0時まで、2時間単位
+        for (let blockHour = 22;
+             blockHour >= 0;
+             blockHour -= 2)
         {
-            const response =
-                await fetch('/api/archive/list');
+            const timesDiv =
+                document.createElement('div');
 
-            if (!response.ok)
-                throw new Error(
-                    `HTTP ${response.status}`
-                );
+            timesDiv.className =
+                'archive-times';
 
-            archiveList =
-                await response.json();
 
-            if (archiveList.length === 0)
+            // 2時間 = 20分 × 6枠
+            for (let slot = 0;
+                 slot < 6;
+                 ++slot)
             {
-                status.textContent =
-                    'No archive data.';
-                return;
+                const totalMinutes =
+                    blockHour * 60 +
+                    slot * 20;
+
+                const hour =
+                    Math.floor(totalMinutes / 60);
+
+                const minute =
+                    totalMinutes % 60;
+
+                const timeKey =
+                    String(hour).padStart(2, '0') +
+                    String(minute).padStart(2, '0');
+
+                const entry =
+                    group.items.get(timeKey);
+
+
+                if (entry)
+                {
+                    const link =
+                        document.createElement('span');
+
+                    link.className =
+                        'archive-time';
+
+                    link.textContent =
+                        entry.timeLabel;
+
+                    link.dataset.index =
+                        String(entry.index);
+
+                    link.onclick =
+                        () =>
+                        {
+                            showArchive(entry.index);
+                        };
+
+                    timesDiv.appendChild(link);
+                }
+                else
+                {
+                    const missing =
+                        document.createElement('span');
+
+                    missing.className =
+                        'archive-missing';
+
+                    missing.textContent =
+                        '.....';
+
+                    timesDiv.appendChild(missing);
+                }
             }
 
-            // 最新の完成済み観測を表示
-            showArchive(
-                archiveList.length - 1
-            );
-        }
-        catch (error)
-        {
-            console.error(error);
-
-            status.textContent =
-                'Failed to load archive.';
+            area.appendChild(timesDiv);
         }
     }
+}
 
-    document.getElementById('previousButton').onclick =
-        () =>
+async function loadArchive()
+{
+    const status =
+        document.getElementById('status');
+
+    try
+    {
+        const response =
+            await fetch('/api/archive/list');
+
+        if (!response.ok)
         {
-            showArchive(currentIndex - 1);
-        };
+            throw new Error(
+                `HTTP ${response.status}`);
+        }
 
-    document.getElementById('nextButton').onclick =
-        () =>
+        archiveList =
+            await response.json();
+
+        if (archiveList.length === 0)
         {
-            showArchive(currentIndex + 1);
-        };
+            status.textContent =
+                'No archive data.';
 
-    loadArchive();
+            return;
+        }
+
+        populateDates();
+        buildArchiveLinks();
+
+        // 最新の完成済み観測を表示
+        showArchive(
+            archiveList.length - 1);
+    }
+    catch (error)
+    {
+        console.error(error);
+
+        status.textContent =
+            'Failed to load archive.';
+    }
+}
+
+async function loadMetadata(item)
+{
+    const metadata =
+        document.getElementById('metadata');
+
+    if (!item.json_exists)
+    {
+        metadata.textContent =
+            'Metadata: not available';
+
+        return;
+    }
+
+    try
+    {
+        const response =
+            await fetch(
+                '/archive/data/' +
+                encodeURIComponent(item.json_file));
+
+        if (!response.ok)
+            throw new Error(`HTTP ${response.status}`);
+
+        const data =
+            await response.json();
+
+        const frequencyMHz =
+            (data.receiver.frequency_hz / 1000000)
+                .toFixed(6);
+
+        const start =
+            data.observation.start_time
+                .replace('T', ' ')
+                .substring(0, 19);
+
+        metadata.innerHTML =
+            `Station: ${data.station.observer}` +
+            ` &nbsp;&nbsp; Location: ${data.station.location}` +
+            ` &nbsp;&nbsp; Receiver: ${data.receiver.model}<br>` +
+
+            `Antenna: ${data.receiver.antenna}` +
+            ` &nbsp;&nbsp; Frequency: ${frequencyMHz} MHz<br>` +
+
+            `Start: ${start}` +
+            ` &nbsp;&nbsp; Received: ` +
+            `${data.data_quality.received_seconds}` +
+            `/${data.data_quality.expected_seconds}` +
+            ` &nbsp;&nbsp; Missing: ` +
+            `${data.data_quality.missing_seconds}`;
+    }
+    catch (error)
+    {
+        console.error(error);
+
+        metadata.textContent =
+            'Metadata: failed to load';
+    }
+}
+
+document.getElementById('previousButton').onclick =
+    () =>
+    {
+        showArchive(
+            currentIndex - 1);
+    };
+
+
+document.getElementById('nextButton').onclick =
+    () =>
+    {
+        showArchive(
+            currentIndex + 1);
+    };
+
+
+document.getElementById('dateSelect').onchange =
+    () =>
+    {
+        const dateSelect =
+            document.getElementById('dateSelect');
+
+        const timeSelect =
+            document.getElementById('timeSelect');
+
+        populateTimes(
+            dateSelect.value);
+
+        if (timeSelect.options.length === 0)
+            return;
+
+        // 選択した日の最新観測を表示
+        timeSelect.selectedIndex =
+            timeSelect.options.length - 1;
+
+        showArchive(
+            Number(timeSelect.value));
+    };
+
+
+document.getElementById('timeSelect').onchange =
+    () =>
+    {
+        const timeSelect =
+            document.getElementById('timeSelect');
+
+        showArchive(
+            Number(timeSelect.value));
+    };
+
+
+loadArchive();
 </script>
 
 </body>

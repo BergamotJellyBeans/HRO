@@ -893,6 +893,66 @@ int main()
             }
         });
 
+    server.Get(R"(/archive/data/(.+\.json))",
+        [](const httplib::Request& req, httplib::Response& res)
+        {
+            namespace fs = std::filesystem;
+
+            const std::string filename = req.matches[1];
+
+            // ファイル名以外を受け付けない
+            if (filename.find('/') != std::string::npos ||
+                filename.find('\\') != std::string::npos ||
+                filename.find("..") != std::string::npos)
+            {
+                res.status = 400;
+                res.set_content(
+                    "Invalid filename\n",
+                    "text/plain");
+                return;
+            }
+
+            const fs::path archiveRoot = "/mnt/hro/png";
+            fs::path foundPath;
+
+            try
+            {
+                for (const auto& entry :
+                     fs::recursive_directory_iterator(archiveRoot))
+                {
+                    if (!entry.is_regular_file())
+                        continue;
+
+                    if (entry.path().filename() == filename)
+                    {
+                        foundPath = entry.path();
+                        break;
+                    }
+                }
+            
+
+                if (foundPath.empty())
+                {
+                    res.status = 404;
+                    res.set_content(
+                        "Archive data not found\n",
+                        "text/plain");
+                    return;
+                }
+
+                res.set_file_content(
+                    foundPath.string(),
+                    "application/json");
+            }
+            catch (const std::exception& e)
+            {
+                res.status = 500;
+                res.set_content(
+                    e.what(),
+                    "text/plain");
+            }
+        });
+
     server.Get("/api/archive/latest",
         [](const httplib::Request&, httplib::Response& res)
         {
@@ -1045,6 +1105,40 @@ int main()
                     fs::path jsonPath = path;
                     jsonPath.replace_extension(".json");
 
+                    // JSONが存在する新形式データは、
+                    // 完全な20分ブロックだけArchiveに掲載する。
+                    // JSONがない旧データはそのまま掲載する。
+                    if (fs::exists(jsonPath))
+                    {
+                        std::ifstream jsonFile(jsonPath);
+
+                        if (jsonFile)
+                        {
+                            json metadata;
+                            jsonFile >> metadata;
+
+                            if (metadata.contains("data_quality"))
+                            {
+                                const auto& quality =
+                                    metadata["data_quality"];
+
+                                const int expected =
+                                    quality.value(
+                                        "expected_seconds", 0);
+
+                                const int received =
+                                    quality.value(
+                                        "received_seconds", 0);
+
+                                if (expected > 0 &&
+                                    received < expected)
+                                {
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                
                     json item;
 
                     item["png_file"] =
