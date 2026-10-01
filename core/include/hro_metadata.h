@@ -58,7 +58,7 @@ struct HroMetadata
 
     double fftResolutionHz = 1.0;
     double fftCenterHz     = 780.0;
-    double fftRangeHz      = 250.0;
+    double fftRangeHz      = 300.0; // 250->300
 
 
     // -------------------------------------------------------------------------

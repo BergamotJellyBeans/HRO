@@ -3,6 +3,7 @@
 #include <websocketpp/server.hpp>
 
 #include "hro_config.h"
+#include "hro_fft_config.h"
 
 #include <chrono>
 #include <thread>
@@ -31,7 +32,8 @@ namespace
 {
 constexpr uint32_t HRO_LIVE_MAGIC = 0x48524F31;  // "HRO1"
 constexpr uint16_t HRO_LIVE_VERSION = 1;
-constexpr std::size_t HRO_LIVE_FFT_BINS = 501;
+//constexpr std::size_t HRO_LIVE_FFT_BINS = 601;
+constexpr std::size_t HRO_LIVE_FFT_BINS = hro::FFT_BIN_COUNT;
 constexpr uint16_t HRO_LIVE_UDP_PORT = 50000;
 
 constexpr std::size_t HRO_LIVE_HEADER_SIZE = 28;
@@ -40,7 +42,7 @@ constexpr std::size_t HRO_LIVE_PACKET_SIZE =
     HRO_LIVE_FFT_BINS * sizeof(float);
 
 static_assert(
-    HRO_LIVE_PACKET_SIZE == 2032,
+    HRO_LIVE_PACKET_SIZE == 2432,   // 2032->2432
     "Unexpected HRO Live UDP packet size"
 );
 
@@ -303,15 +305,16 @@ public:
 
     void sendTestData()
     {
-        constexpr int FFT_BIN_COUNT = 501;
-
+    constexpr int FFT_BIN_COUNT =
+        static_cast<int>(hro::FFT_BIN_COUNT);
+        
         std::vector<float> fftBins;
         fftBins.reserve(FFT_BIN_COUNT);
 
         for (int i = 0; i < FFT_BIN_COUNT; ++i)
         {
             const float distance =
-                std::abs(static_cast<float>(i - 250));
+                std::abs(static_cast<float>(i - 300));  // 250->300
 
             const float value =
                 std::max(
@@ -1200,7 +1203,7 @@ int main()
                 << "    \"receiver\": \"" << jsonEscape(config.receiver) << "\",\n"
                 << "    \"frequency_hz\": " << config.frequency_hz << ",\n"
                 << "    \"fft_center_hz\": " << config.fft_center_hz << ",\n"
-                << "    \"fft_range_hz\": " << config.fft_range_hz << ",\n"
+                << "    \"fft_range_hz\": " << hro::FFT_RANGE_HZ << ",\n"
                 << "    \"level_peak_range_hz\": "
                 << config.level_peak_range_hz << ",\n"
                 << "    \"antenna\": \"" << jsonEscape(config.antenna) << "\"\n"
@@ -1244,9 +1247,6 @@ int main()
 
                 config.fft_center_hz =
                     body.at("receiver").at("fft_center_hz").get<int>();
-
-                config.fft_range_hz =
-                    body.at("receiver").at("fft_range_hz").get<int>();
 
                 config.level_peak_range_hz =
                     body.at("receiver").at("level_peak_range_hz").get<int>();

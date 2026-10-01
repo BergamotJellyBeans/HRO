@@ -1,6 +1,7 @@
 #include <cairo/cairo.h>
 
 #include "hro_config.h"
+#include "hro_fft_config.h"
 #include "hro_version.h"
 
 #include <arpa/inet.h>
@@ -31,9 +32,9 @@ constexpr uint16_t HRO_PNG_UDP_PORT = 50001;
 constexpr uint32_t HRO_LIVE_MAGIC = 0x48524F31; // "HRO1"
 constexpr uint16_t HRO_LIVE_VERSION = 1;
 
-constexpr std::size_t FFT_BINS = 501;
-constexpr std::size_t HRO_LIVE_PACKET_SIZE = 2032;
-
+//constexpr std::size_t FFT_BINS = 601;   // 501 -> 601
+constexpr std::size_t FFT_BINS = hro::FFT_BIN_COUNT;
+constexpr std::size_t HRO_LIVE_PACKET_SIZE = 28 + FFT_BINS * sizeof(float);
 constexpr int PNG_SECONDS = 20 * 60; // 1200
 
 struct PngSecond
@@ -509,7 +510,7 @@ bool writeJson(
         << "    \"center_hz\": "
         << config.fft_center_hz << ",\n"
         << "    \"range_hz\": "
-        << config.fft_range_hz << ",\n"
+        << hro::FFT_RANGE_HZ << ",\n"
         << "    \"bins\": "
         << FFT_BINS << ",\n"
         << "    \"level_peak_range_hz\": "
@@ -823,7 +824,7 @@ void drawWaterfall(
             // bottom = low frequency
             //
             // fft[0]   = low frequency
-            // fft[500] = high frequency
+            // fft[600] = high frequency
 
             const double ratio =
                 1.0 -
@@ -905,20 +906,32 @@ void drawFrequencyAxis(
 
     cairo_set_line_width(cr, 1.0);
 
-    for (int i = 0; i <= 4; ++i)
+    constexpr int TICK_HZ = 100;
+
+    const int maxFrequency =
+        config.fft_center_hz + hro::FFT_RANGE_HZ;
+
+    const int minFrequency =
+        config.fft_center_hz - hro::FFT_RANGE_HZ;
+
+    // Highest 100 Hz tick inside the FFT display range
+    const int firstTick =
+        (maxFrequency / TICK_HZ) * TICK_HZ;
+
+    for (int frequency = firstTick;
+         frequency >= minFrequency;
+         frequency -= TICK_HZ)
     {
         const double ratio =
-            static_cast<double>(i) / 4.0;
+            static_cast<double>(
+                maxFrequency - frequency) /
+            static_cast<double>(
+                2 * hro::FFT_RANGE_HZ);
 
         const double y =
             WATERFALL_TOP +
             (WATERFALL_BOTTOM -
              WATERFALL_TOP) * ratio;
-
-        const double frequency =
-            config.fft_center_hz +
-            config.fft_range_hz -
-            2.0 * config.fft_range_hz * ratio;
 
         // Left tick
         cairo_move_to(cr, SCROLL_LEFT - 5, y);
@@ -930,31 +943,19 @@ void drawFrequencyAxis(
 
         cairo_stroke(cr);
 
-        std::ostringstream text;
-
-        if (std::fabs(frequency -
-                      std::round(frequency)) < 0.001)
-        {
-            text << static_cast<int>(
-                std::lround(frequency));
-        }
-        else
-        {
-            text << std::fixed
-                 << std::setprecision(1)
-                 << frequency;
-        }
+        const std::string text =
+            std::to_string(frequency);
 
         cairo_text_extents_t extents{};
 
         cairo_text_extents(
             cr,
-            text.str().c_str(),
+            text.c_str(),
             &extents);
 
         drawText(
             cr,
-            text.str(),
+            text,
             40 - extents.width,
             y + extents.height / 2.0);
     }
@@ -1205,7 +1206,7 @@ bool writePng(
     fftText
         << config.fft_center_hz
         << " +/-"
-        << config.fft_range_hz
+        << hro::FFT_RANGE_HZ
         << " Hz";
 
 

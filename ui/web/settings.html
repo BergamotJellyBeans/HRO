@@ -156,11 +156,6 @@ input {
 </div>
 
 <div class="row">
-<label>FFT Display Range +/- (Hz)</label>
-<input id="fft_range_hz" type="number">
-</div>
-
-<div class="row">
 <label>Level Peak Range +/- (Hz)</label>
 <input id="level_peak_range_hz" type="number">
 </div>
@@ -265,9 +260,6 @@ async function loadConfig()
         document.getElementById('fft_center_hz').value =
             config.receiver.fft_center_hz;
 
-        document.getElementById('fft_range_hz').value =
-            config.receiver.fft_range_hz;
-
         document.getElementById('level_peak_range_hz').value =
             config.receiver.level_peak_range_hz;
 
@@ -317,8 +309,6 @@ document.getElementById('saveButton').addEventListener('click', async function()
                 Number(document.getElementById('frequency_hz').value),
             fft_center_hz:
                 Number(document.getElementById('fft_center_hz').value),
-            fft_range_hz:
-                Number(document.getElementById('fft_range_hz').value),
             level_peak_range_hz:
                 Number(document.getElementById('level_peak_range_hz').value),
             antenna:

@@ -15,7 +15,6 @@ struct HroConfig
     std::string receiver;
     uint32_t frequency_hz = 0;
     int fft_center_hz = 0;
-    int fft_range_hz = 0;
     std::string antenna;
     int level_peak_range_hz = 0;
 

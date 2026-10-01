@@ -78,7 +78,7 @@ bool HroHeader::isValidV1() const
         requireValue("DATA_TYPE", "FLOAT32") &&
         requireValue("BYTE_ORDER", "LITTLE_ENDIAN") &&
         requireValue("FFT_SIZE", "8192") &&
-        requireValue("FFT_BIN_COUNT", "501") &&
+        requireValue("FFT_BIN_COUNT", std::to_string(hro::FFT_BIN_COUNT)) &&
         requireValue("RECORD_SLOTS", "3600") &&
         requireValue("EVENT_MAP_SIZE", "3600");
 }

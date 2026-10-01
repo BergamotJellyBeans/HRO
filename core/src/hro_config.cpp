@@ -1,4 +1,5 @@
 #include "hro_config.h"
+#include "hro_fft_config.h"
 
 #include <algorithm>
 #include <cctype>
@@ -55,7 +56,6 @@ bool HroConfig::load(const std::string& filename)
         bool receiver = false;
         bool frequency_hz = false;
         bool fft_center_hz = false;
-        bool fft_range_hz = false;
         bool antenna = false;
         bool level_peak_range_hz = false;
 
@@ -135,11 +135,6 @@ bool HroConfig::load(const std::string& filename)
                     temp.fft_center_hz = std::stoi(value);
                     seen.fft_center_hz = true;
                 }
-                else if (key == "fft_range_hz")
-                {
-                    temp.fft_range_hz = std::stoi(value);
-                    seen.fft_range_hz = true;
-                }
                 else if (key == "antenna")
                 {
                     temp.antenna = value;
@@ -175,7 +170,6 @@ bool HroConfig::load(const std::string& filename)
         seen.receiver &&
         seen.frequency_hz &&
         seen.fft_center_hz &&
-        seen.fft_range_hz &&
         seen.antenna &&
         seen.level_peak_range_hz &&
         seen.screenshot_prefix;
@@ -225,7 +219,6 @@ bool HroConfig::save(const std::string& filename) const
     file << "receiver=" << receiver << "\n";
     file << "frequency_hz=" << frequency_hz << "\n";
     file << "fft_center_hz=" << fft_center_hz << "\n";
-    file << "fft_range_hz=" << fft_range_hz << "\n";
     file << "antenna=" << antenna << "\n";
     file << "level_peak_range_hz=" << level_peak_range_hz << "\n";
     file << "\n";
@@ -282,17 +275,13 @@ bool HroConfig::validate(std::string& error_message) const
         return set_error(
             "FFT center frequency must be 0 Hz or greater");
 
-    if (fft_range_hz < 1)
-        return set_error(
-            "FFT display range must be 1 Hz or greater");
-
     const int64_t fft_min =
         static_cast<int64_t>(fft_center_hz) -
-        static_cast<int64_t>(fft_range_hz);
+        static_cast<int64_t>(hro::FFT_RANGE_HZ);
 
     const int64_t fft_max =
         static_cast<int64_t>(fft_center_hz) +
-        static_cast<int64_t>(fft_range_hz);
+        static_cast<int64_t>(hro::FFT_RANGE_HZ);
 
     if (fft_min < 0)
         return set_error(
@@ -303,16 +292,9 @@ bool HroConfig::validate(std::string& error_message) const
         return set_error(
             "FFT display upper frequency must not exceed 1800 Hz");
 
-    // Current FFT resolution is 1 Hz/bin
-    const int64_t bin_count = fft_max - fft_min + 1;
-
-    if (bin_count < 1 || bin_count > 3601)
-        return set_error(
-            "Invalid FFT display bin count");
-
     // Level Peak Range: 0 ... FFT Range
     if (level_peak_range_hz < 0 ||
-        level_peak_range_hz > fft_range_hz)
+        level_peak_range_hz > hro::FFT_RANGE_HZ)
     {
         return set_error(
             "Level Peak Range must be between 0 and FFT Range");
@@ -352,7 +334,6 @@ void HroConfig::setDefaults()
     receiver = "RTL-SDR Blog V4";
     frequency_hz = 53750000;
     fft_center_hz = 780;
-    fft_range_hz = 250;
     antenna = "";
     level_peak_range_hz = 5;
 

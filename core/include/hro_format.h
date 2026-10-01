@@ -1,5 +1,7 @@
 #pragma once
 
+#include "hro_fft_config.h"
+
 #include <cstddef>
 #include <cstdint>
 
@@ -19,7 +21,7 @@ namespace hro {
 //   | Event Map                   |  3600 bytes
 //   +-----------------------------+  offset 12304
 //   | Spectrum Data               |
-//   | 3600 x 501 x float32        |
+//   | 3600 x 601 x float32        |    501->601
 //   +-----------------------------+
 //
 // One .hro file represents one clock hour.
@@ -143,8 +145,8 @@ constexpr EventValue EVENT_VISUAL = 0x01;
 
 constexpr std::size_t FFT_SIZE = 8192;
 
-constexpr int BIN_MIN = 530;
-constexpr int BIN_MAX = 1030;
+constexpr int BIN_MIN = 480;    // 530->480
+constexpr int BIN_MAX = 1080;   // 1030->1080
 
 constexpr std::size_t BIN_COUNT =
     static_cast<std::size_t>(BIN_MAX - BIN_MIN + 1);
@@ -218,8 +220,8 @@ static_assert(RECORD_SLOTS == 3600,
 static_assert(VALIDITY_USED_BYTES == 450,
               "Unexpected HRO validity map usage");
 
-static_assert(BIN_COUNT == 501,
-              "HRO spectrum must contain 501 bins");
+static_assert(BIN_COUNT == hro::FFT_BIN_COUNT,
+              "HRO spectrum bin count must match FFT configuration");
 
 static_assert(sizeof(SpectrumValue) == 4,
               "HRO spectrum value must be 32-bit float");
@@ -227,7 +229,7 @@ static_assert(sizeof(SpectrumValue) == 4,
 static_assert(sizeof(SpectrumRecord) == SPECTRUM_RECORD_SIZE,
               "Unexpected SpectrumRecord layout");
 
-static_assert(SPECTRUM_RECORD_SIZE == 2004,
+static_assert(SPECTRUM_RECORD_SIZE == 2404, // 2004->2404
               "Unexpected HRO spectrum record size");
 
 static_assert(VALIDITY_MAP_OFFSET == 8192,
@@ -239,10 +241,10 @@ static_assert(EVENT_MAP_OFFSET == 8704,
 static_assert(DATA_OFFSET == 12304,
               "Unexpected spectrum data offset");
 
-static_assert(DATA_SIZE == 7214400,
+static_assert(DATA_SIZE == 8654400, // 7214400->8654400
               "Unexpected HRO spectrum data size");
 
-static_assert(FILE_SIZE == 7226704,
+static_assert(FILE_SIZE == 8666704, // 7226704->8666704
               "Unexpected HRO file size");
 
 } // namespace hro

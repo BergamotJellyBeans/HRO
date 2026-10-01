@@ -20,7 +20,6 @@ int main()
     std::cout << "Receiver: " << config.receiver << '\n';
     std::cout << "Frequency: " << config.frequency_hz << " Hz\n";
     std::cout << "FFT Center: " << config.fft_center_hz << " Hz\n";
-    std::cout << "FFT Range: +/-" << config.fft_range_hz << " Hz\n";
     std::cout << "Level Peak Range: +/-"
               << config.level_peak_range_hz << " Hz\n";
     std::cout << "Antenna: " << config.antenna << '\n';

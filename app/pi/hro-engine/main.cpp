@@ -1,5 +1,7 @@
 #include "rtl_sdr_source.h"
 #include "hro_config.h"
+#include "hro_fft_config.h"
+
 #include "dsp/fs4_rotator.h"
 #include "dsp/decimator_15.h"
 #include "dsp/nco_shifter.h"
@@ -36,8 +38,8 @@ namespace
 
 constexpr uint32_t HRO_LIVE_MAGIC = 0x48524F31;  // "HRO1"
 constexpr uint16_t HRO_LIVE_VERSION = 1;
-constexpr std::size_t HRO_LIVE_FFT_BINS = 501;
-
+//constexpr std::size_t HRO_LIVE_FFT_BINS = 601;  // 501->601
+constexpr std::size_t HRO_LIVE_FFT_BINS = hro::FFT_BIN_COUNT;
 constexpr std::size_t HRO_LIVE_HEADER_SIZE = 28;
 
 constexpr std::size_t HRO_LIVE_PACKET_SIZE =
@@ -45,7 +47,7 @@ constexpr std::size_t HRO_LIVE_PACKET_SIZE =
     HRO_LIVE_FFT_BINS * sizeof(float);
 
 static_assert(
-    HRO_LIVE_PACKET_SIZE == 2032,
+    HRO_LIVE_PACKET_SIZE == 2432,   // 2032->2432
     "Unexpected HRO Live UDP packet size"
 );
 
@@ -487,7 +489,7 @@ int main()
                     return 1;
                 }
 
-                constexpr int DISPLAY_RANGE_HZ = 250;
+                constexpr int DISPLAY_RANGE_HZ = 300;  // 250->300
                 constexpr int FFT_SIZE = 8192;
                 constexpr int DISPLAY_BINS = DISPLAY_RANGE_HZ * 2 + 1;
 

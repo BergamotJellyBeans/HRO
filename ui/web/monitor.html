@@ -417,7 +417,7 @@ function connectLiveWebSocket()
                 return;
 
             if (!Array.isArray(message.fft) ||
-                message.fft.length !== 501)
+                message.fft.length !== 601) // 501->601
             {
                 console.error(
                     'Invalid LIVE FFT data:',
@@ -519,7 +519,7 @@ function addLiveWaterfallLine(fft)
     const x = WATERFALL_SECONDS - 1;
     const binCount = fft.length;
 
-    // 501 FFT binsをWaterfallの縦方向へ描画
+    // 601 FFT binsをWaterfallの縦方向へ描画
     for (let y = 0; y < WATERFALL_HEIGHT; ++y)
     {
         // 上側 = 高い周波数
@@ -622,32 +622,36 @@ function drawFrequencyAxis()
     ctx.strokeStyle = '#20dff3';
     ctx.lineWidth = 1;
 
-    // 5 major ticks:
-    // center+range, +range/2, center, -range/2, center-range
-    for (let i = 0; i <= 4; ++i)
+    // Major ticks every 100 Hz
+    const tickHz = 100;
+
+    const maxFrequency = center + range;
+    const minFrequency = center - range;
+
+    // First 100 Hz tick inside the upper edge
+    const firstTick =
+        Math.floor(maxFrequency / tickHz) * tickHz;
+
+    for (let frequency = firstTick;
+         frequency >= minFrequency;
+        frequency -= tickHz)
     {
-        const ratio = i / 4.0;
+        const ratio =
+            (maxFrequency - frequency) / (2 * range);
 
-        const y =
-            topY + (bottomY - topY) * ratio;
-
-        const frequency =
-            center + range - (2 * range * ratio);
+        let y = topY + (bottomY - topY) * ratio;
 
         // Tick
         ctx.beginPath();
-        ctx.moveTo(SCROLL_LEFT-5, y);
-        ctx.lineTo(SCROLL_LEFT-1, y);
-        ctx.moveTo(SCROLL_RIGHT+1, y);
-        ctx.lineTo(SCROLL_RIGHT+5, y);
+        ctx.moveTo(SCROLL_LEFT - 5, y);
+        ctx.lineTo(SCROLL_LEFT - 1, y);
         ctx.stroke();
 
         // Label
         ctx.fillText(
-            Number.isInteger(frequency)
-                ? frequency.toFixed(0)
-                : frequency.toFixed(1),
-            40, y
+            frequency.toString(),
+            SCROLL_LEFT - 8,
+            y
         );
     }
 }
