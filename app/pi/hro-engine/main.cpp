@@ -221,13 +221,16 @@ int main()
         << "RTL-SDR LO: " << lo_frequency_hz << " Hz\n"
         << "Fs/4 shift: +" << FS4_HZ << " Hz\n";
 
-    if (!sdr.setTunerGain(402))
+    if (!sdr.setTunerGain(config.sdr_gain))
     {
         std::cerr << "ERROR: Failed to set RTL-SDR tuner gain\n";
         return 1;
     }
 
-    std::cout << "RTL-SDR tuner gain: 40.2 dB (manual)\n";
+    std::cout
+        << "RTL-SDR tuner gain: "
+        << (config.sdr_gain / 10.0)
+        << " dB (manual)\n";
 
     if (!sdr.resetBuffer())
     {

@@ -501,7 +501,9 @@ bool writeJson(
         << "    \"antenna\": \""
         << escapeJson(config.antenna) << "\",\n"
         << "    \"frequency_hz\": "
-        << config.frequency_hz << "\n"
+        << config.frequency_hz << ",\n"
+        << "    \"gain_db\": "
+        << (config.sdr_gain / 10.0) << "\n"
         << "  },\n"
 
         << "  \"fft\": {\n"

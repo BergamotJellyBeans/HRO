@@ -1,5 +1,6 @@
 #include "hro_config.h"
 #include "hro_fft_config.h"
+#include "hro_sdr_config.h"
 
 #include <algorithm>
 #include <cctype>
@@ -55,6 +56,7 @@ bool HroConfig::load(const std::string& filename)
 
         bool receiver = false;
         bool frequency_hz = false;
+        bool sdr_gain = false;
         bool fft_center_hz = false;
         bool antenna = false;
         bool level_peak_range_hz = false;
@@ -130,6 +132,11 @@ bool HroConfig::load(const std::string& filename)
                         static_cast<uint32_t>(std::stoul(value));
                     seen.frequency_hz = true;
                 }
+                else if (key == "sdr_gain")
+                {
+                    temp.sdr_gain = std::stoi(value);
+                    seen.sdr_gain = true;
+                }
                 else if (key == "fft_center_hz")
                 {
                     temp.fft_center_hz = std::stoi(value);
@@ -169,6 +176,7 @@ bool HroConfig::load(const std::string& filename)
         seen.longitude &&
         seen.receiver &&
         seen.frequency_hz &&
+        seen.sdr_gain &&
         seen.fft_center_hz &&
         seen.antenna &&
         seen.level_peak_range_hz &&
@@ -218,6 +226,7 @@ bool HroConfig::save(const std::string& filename) const
     file << "[receiver]\n";
     file << "receiver=" << receiver << "\n";
     file << "frequency_hz=" << frequency_hz << "\n";
+    file << "sdr_gain=" << sdr_gain << "\n";
     file << "fft_center_hz=" << fft_center_hz << "\n";
     file << "antenna=" << antenna << "\n";
     file << "level_peak_range_hz=" << level_peak_range_hz << "\n";
@@ -292,6 +301,16 @@ bool HroConfig::validate(std::string& error_message) const
         return set_error(
             "FFT display upper frequency must not exceed 1800 Hz");
 
+    // RTL-SDR tuner gain
+    if (std::find(
+        hro::SDR_GAIN_VALUES.begin(),
+        hro::SDR_GAIN_VALUES.end(),
+        sdr_gain) == hro::SDR_GAIN_VALUES.end())
+    {
+        return set_error(
+            "SDR gain is not supported by the RTL-SDR tuner");
+    }
+
     // Level Peak Range: 0 ... FFT Range
     if (level_peak_range_hz < 0 ||
         level_peak_range_hz > hro::FFT_RANGE_HZ)
@@ -333,6 +352,7 @@ void HroConfig::setDefaults()
 
     receiver = "RTL-SDR Blog V4";
     frequency_hz = 53750000;
+    sdr_gain = hro::DEFAULT_SDR_GAIN;
     fft_center_hz = 780;
     antenna = "";
     level_peak_range_hz = 5;

@@ -307,7 +307,7 @@ public:
     {
     constexpr int FFT_BIN_COUNT =
         static_cast<int>(hro::FFT_BIN_COUNT);
-        
+
         std::vector<float> fftBins;
         fftBins.reserve(FFT_BIN_COUNT);
 
@@ -1113,10 +1113,18 @@ int main()
                     // JSONがない旧データはそのまま掲載する。
                     if (fs::exists(jsonPath))
                     {
-                        std::ifstream jsonFile(jsonPath);
-
-                        if (jsonFile)
+                        try
                         {
+                            std::ifstream jsonFile(jsonPath);
+
+                            if (!jsonFile)
+                            {
+                                std::cerr
+                                    << "WARNING: Failed to open archive JSON: "
+                                    << jsonPath << "\n";
+                                continue;
+                            }
+
                             json metadata;
                             jsonFile >> metadata;
 
@@ -1140,8 +1148,17 @@ int main()
                                 }
                             }
                         }
+                        catch (const std::exception& e)
+                        {
+                            std::cerr
+                                << "WARNING: Invalid archive JSON: "
+                                << jsonPath
+                                << " (" << e.what() << ")\n";
+
+                            continue;
+                        }
                     }
-                
+
                     json item;
 
                     item["png_file"] =
@@ -1202,6 +1219,7 @@ int main()
                 << "  \"receiver\": {\n"
                 << "    \"receiver\": \"" << jsonEscape(config.receiver) << "\",\n"
                 << "    \"frequency_hz\": " << config.frequency_hz << ",\n"
+                << "    \"sdr_gain\": " << config.sdr_gain << ",\n"
                 << "    \"fft_center_hz\": " << config.fft_center_hz << ",\n"
                 << "    \"fft_range_hz\": " << hro::FFT_RANGE_HZ << ",\n"
                 << "    \"level_peak_range_hz\": "
@@ -1244,6 +1262,9 @@ int main()
 
                 config.frequency_hz =
                     body.at("receiver").at("frequency_hz").get<uint32_t>();
+
+                config.sdr_gain =
+                    body.at("receiver").at("sdr_gain").get<int>();
 
                 config.fft_center_hz =
                     body.at("receiver").at("fft_center_hz").get<int>();
