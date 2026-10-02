@@ -1,0 +1,16 @@
+[Unit]
+Description=Pi5-HRO PNG/JSON Recorder
+RequiresMountsFor=/mnt/hro
+After=network.target
+
+[Service]
+Type=simple
+User=hro
+Group=hro
+WorkingDirectory=/mnt/hro/development/HRO
+ExecStart=/mnt/hro/development/HRO/build/app/pi/hro-png/hro-png
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

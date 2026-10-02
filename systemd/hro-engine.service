@@ -1,0 +1,17 @@
+[Unit]
+Description=Pi5-HRO SDR Engine
+RequiresMountsFor=/mnt/hro
+After=network.target hro-png.service
+Wants=hro-png.service
+
+[Service]
+Type=simple
+User=hro
+Group=hro
+WorkingDirectory=/mnt/hro/development/HRO
+ExecStart=/mnt/hro/development/HRO/build/app/pi/hro-engine/hro-engine
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

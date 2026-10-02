@@ -1,0 +1,16 @@
+[Unit]
+Description=Pi5-HRO Web Server
+RequiresMountsFor=/mnt/hro
+After=network.target
+
+[Service]
+Type=simple
+User=hro
+Group=hro
+WorkingDirectory=/mnt/hro/development/HRO
+ExecStart=/mnt/hro/development/HRO/build/app/pi/hro-web/hro-web
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
