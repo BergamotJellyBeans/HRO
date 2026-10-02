@@ -35,6 +35,15 @@ bool RtlSdrSource::setSampleRate(uint32_t sampleRate)
     return rtlsdr_set_sample_rate(device_, sampleRate) == 0;
 }
 
+uint32_t RtlSdrSource::getSampleRate() const
+{
+    if (device_ == nullptr) {
+        return 0;
+    }
+
+    return rtlsdr_get_sample_rate(device_);
+}
+
 bool RtlSdrSource::setCenterFrequency(uint32_t frequencyHz)
 {
     if (device_ == nullptr) {

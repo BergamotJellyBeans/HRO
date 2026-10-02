@@ -795,6 +795,10 @@ function buildStaticLayer()
         config.station.latitude, 'N', 'S'
     );
 
+    const gain =
+        (config.receiver.sdr_gain / 10.0).toFixed(1) + ' dB';
+
+
     const frequencyMHz =
         (config.receiver.frequency_hz / 1000000.0).toFixed(6) + ' MHz';
 
@@ -838,6 +842,12 @@ function buildStaticLayer()
         'ANTENNA',
         config.receiver.antenna,
         905, 57, 75, 12
+    );
+
+    drawInfo(
+        'GAIN',
+        gain,
+        1050, 24, 43, 12
     );
 
     drawInfo(

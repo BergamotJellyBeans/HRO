@@ -201,6 +201,14 @@ int main()
         return 1;
     }
 
+    const uint32_t actualSampleRate = sdr.getSampleRate();
+
+    std::cout
+        << "RTL-SDR requested sample rate: "
+        << SAMPLE_RATE << " Hz\n"
+        << "RTL-SDR actual sample rate   : "
+        << actualSampleRate << " Hz\n";
+
     constexpr uint32_t RTL_SAMPLE_RATE = 960000;
     constexpr uint32_t FS4_HZ = RTL_SAMPLE_RATE / 4U;
 
@@ -618,7 +626,7 @@ int main()
 
                     const double resampledRate =
                         static_cast<double>(totalResampledSamples) / elapsedSec;
-#if 0
+#if 1
                     std::cout
                         << "  elapsed=" << elapsedSec
                         << " s"
@@ -627,7 +635,7 @@ int main()
                         << "  Resampled=" << resampledRate
                         << " sample/s"
                         << "  QueueOverflow=" << rawQueueOverflowCount.load()
-                        << '\n';
+<< std::endl;
 #endif
                 writeUint64BE(
                     livePacket.data() + 8,

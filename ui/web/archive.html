@@ -78,7 +78,7 @@ h1 {
 
 .archive-times {
     display: grid;
-    grid-template-columns: repeat(6, 56px);
+    grid-template-columns: repeat(12, 56px);
     column-gap: 0;
     line-height: 18px;
 }
@@ -415,11 +415,10 @@ function buildArchiveLinks()
 
         area.appendChild(dateDiv);
 
-
-        // 22時から0時まで、2時間単位
-        for (let blockHour = 22;
+        // 20時から0時まで、4時間単位
+        for (let blockHour = 20;
              blockHour >= 0;
-             blockHour -= 2)
+             blockHour -= 4)
         {
             const timesDiv =
                 document.createElement('div');
@@ -428,9 +427,9 @@ function buildArchiveLinks()
                 'archive-times';
 
 
-            // 2時間 = 20分 × 6枠
+            // 4時間 = 20分 × 12枠
             for (let slot = 0;
-                 slot < 6;
+                 slot < 12;
                  ++slot)
             {
                 const totalMinutes =
@@ -574,8 +573,8 @@ async function loadMetadata(item)
         metadata.innerHTML =
             `Station: ${data.station.observer}` +
             ` &nbsp;&nbsp; Location: ${data.station.location}` +
-            ` &nbsp;&nbsp; Receiver: ${data.receiver.model}<br>` +
-
+            ` &nbsp;&nbsp; Receiver: ${data.receiver.model}` +
+            ` &nbsp;&nbsp; Gain: ${Number(data.receiver.gain_db).toFixed(1)}dB<br>` +
             `Antenna: ${data.receiver.antenna}` +
             ` &nbsp;&nbsp; Frequency: ${frequencyMHz} MHz<br>` +
 

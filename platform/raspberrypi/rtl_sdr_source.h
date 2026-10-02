@@ -18,6 +18,7 @@ public:
     void close();
 
     bool setSampleRate(uint32_t sampleRate);
+    uint32_t getSampleRate() const;
     bool setCenterFrequency(uint32_t frequencyHz);
     bool setTunerGain(int gainTenthsDb);
     bool resetBuffer();

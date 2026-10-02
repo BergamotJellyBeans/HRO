@@ -1185,6 +1185,18 @@ bool writePng(
 
 
     // --------------------------------------------------------
+    // Gain
+    // --------------------------------------------------------
+
+    std::ostringstream gainText;
+
+    gainText
+        << std::fixed
+        << std::setprecision(1)
+        << (config.sdr_gain / 10.0)
+        << " dB";
+
+    // --------------------------------------------------------
     // Receiving frequency
     // --------------------------------------------------------
 
@@ -1251,6 +1263,12 @@ bool writePng(
         "ANTENNA",
         config.antenna,
         905, 57, 75, 12);
+
+    drawInfo(
+        cr,
+        "GAIN",
+        gainText.str(),
+        1050, 24, 43, 12);
 
     drawInfo(
         cr,
