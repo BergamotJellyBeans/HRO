@@ -25,6 +25,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <utility>
+#include <cstdlib>
 
 using json = nlohmann::json;
 
@@ -1187,6 +1188,131 @@ int main()
                     result.dump(2) + "\n",
                     "application/json");
             }
+        });
+
+    server.Get("/api/system/status",
+        [](const httplib::Request&, httplib::Response& res)
+        {
+            const int pngResult =
+                std::system(
+                    "systemctl is-active --quiet hro-png.service");
+
+            const int engineResult =
+                std::system(
+                    "systemctl is-active --quiet hro-engine.service");
+
+            json result;
+
+            result["png"] =
+                (pngResult == 0) ? "running" : "stopped";
+
+            result["engine"] =
+                (engineResult == 0) ? "running" : "stopped";
+
+            result["observation"] =
+                (pngResult == 0 && engineResult == 0)
+                    ? "running"
+                    : "stopped";
+
+            res.set_content(
+                result.dump(2) + "\n",
+                "application/json");
+        });
+
+    server.Post("/api/system/start",
+        [](const httplib::Request&, httplib::Response& res)
+        {
+            const int result = std::system(
+                "sudo -n "
+                "/usr/local/sbin/hro-control start");
+
+            json response;
+
+            if (result != 0)
+            {
+                res.status = 500;
+                response["error"] =
+                    "Failed to start observation";
+            }
+            else
+            {
+                response["status"] = "started";
+            }
+
+            res.set_content(
+                response.dump(2) + "\n",
+                "application/json");
+        });
+
+    server.Post("/api/system/stop",
+        [](const httplib::Request&, httplib::Response& res)
+        {
+            const int result = std::system(
+                "sudo -n "
+                "/usr/local/sbin/hro-control stop");
+
+            json response;
+
+            if (result != 0)
+            {
+                res.status = 500;
+                response["error"] =
+                    "Failed to stop observation";
+            }
+            else
+            {
+                response["status"] = "stopped";
+            }
+
+            res.set_content(
+                response.dump(2) + "\n",
+                "application/json");
+        });
+
+    server.Post("/api/system/restart",
+        [](const httplib::Request&, httplib::Response& res)
+        {
+            const int result = std::system(
+                "sudo -n "
+                "/usr/local/sbin/hro-control restart");
+
+            json response;
+
+            if (result != 0)
+            {
+                res.status = 500;
+                response["error"] =
+                    "Failed to restart observation";
+            }
+            else
+            {
+                response["status"] = "restarted";
+            }
+
+            res.set_content(
+                response.dump(2) + "\n",
+                "application/json");
+        });
+
+    server.Post("/api/system/shutdown",
+        [](const httplib::Request&, httplib::Response& res)
+        {
+            json response;
+            response["status"] = "shutting_down";
+
+            res.set_content(
+                response.dump(2) + "\n",
+                "application/json");
+
+            std::thread([]()
+            {
+                std::this_thread::sleep_for(
+                    std::chrono::seconds(1));
+
+                std::system(
+                    "sudo -n "
+                    "/usr/local/sbin/hro-control shutdown");
+            }).detach();
         });
 
     server.Get("/api/config",

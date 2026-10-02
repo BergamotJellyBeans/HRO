@@ -62,6 +62,26 @@ select {
     cursor: pointer;
 }
 
+.system-status {
+    font-weight: bold;
+}
+
+.system-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.system-buttons button {
+    padding: 10px 16px;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+#shutdownButton {
+    margin-left: auto;
+}
+
 .status {
     margin-top: 15px;
     font-size: 14px;
@@ -219,6 +239,36 @@ select {
     </button>
 </div>
 
+<fieldset>
+<legend>System Control</legend>
+
+<div class="row">
+    <label>Observation</label>
+    <div class="system-status" id="observationStatus">
+        Checking...
+    </div>
+</div>
+
+<div class="system-buttons">
+    <button id="startButton" type="button">
+        Start Observation
+    </button>
+
+    <button id="stopButton" type="button">
+        Stop Observation
+    </button>
+
+    <button id="restartButton" type="button">
+        Apply Settings & Restart
+    </button>
+
+    <button id="shutdownButton" type="button">
+        Shutdown Pi5
+    </button>
+</div>
+
+</fieldset>
+
 <div class="status" id="status">Loading...</div>
 
 </div>
@@ -253,6 +303,140 @@ function dmsToDecimal(deg, min, sec, direction)
 
     return value;
 }
+
+async function loadSystemStatus()
+{
+    const statusElement =
+        document.getElementById('observationStatus');
+
+    try
+    {
+        const response =
+            await fetch('/api/system/status');
+
+        if (!response.ok)
+            throw new Error('HTTP ' + response.status);
+
+        const result = await response.json();
+
+        if (result.observation === 'running')
+        {
+            statusElement.textContent = 'RUNNING';
+        }
+        else
+        {
+            statusElement.textContent = 'STOPPED';
+        }
+    }
+    catch (error)
+    {
+        statusElement.textContent = 'UNKNOWN';
+    }
+}
+
+async function systemCommand(command)
+{
+    try
+    {
+        const response = await fetch('/api/system/' + command, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: '{}'
+        });
+
+        const result = await response.json();
+
+        if (!response.ok)
+            throw new Error(result.error || 'System command failed');
+
+        await loadSystemStatus();
+    }
+    catch (error)
+    {
+        document.getElementById('status').textContent =
+            'System command failed: ' + error.message;
+    }
+}
+
+document.getElementById('startButton').addEventListener('click',
+    async function()
+    {
+        document.getElementById('status').textContent =
+            'Request accepted. Starting observation...';
+
+            await systemCommand('start');
+    });
+
+
+document.getElementById('stopButton').addEventListener('click',
+    async function()
+    {
+        document.getElementById('status').textContent =
+            'Request accepted. Stopping observation...';
+
+        await systemCommand('stop');
+    });
+
+document.getElementById('restartButton').addEventListener('click',
+    async function()
+    {
+        document.getElementById('status').textContent =
+            'Request accepted. Applying settings...';
+
+        const saved = await saveConfig();
+
+        if (!saved)
+            return;
+
+        document.getElementById('status').textContent =
+            'Configuration saved. Restarting observation...';
+
+        await systemCommand('restart');
+
+        await loadSystemStatus();
+
+        document.getElementById('status').textContent =
+            'Configuration applied. Observation restarted.';
+    });
+
+document.getElementById('shutdownButton').addEventListener('click',
+    async function()
+    {
+        const confirmed = confirm(
+            'Shutdown Pi5-HRO?\n\n' +
+            'Observation will stop and the Pi5 will power off.'
+        );
+
+        if (!confirmed)
+            return;
+
+        document.getElementById('status').textContent =
+            'Request accepted. Shutting down Pi5-HRO...';
+
+        try
+        {
+            const response = await fetch('/api/system/shutdown', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: '{}'
+            });
+
+            if (!response.ok)
+                throw new Error('HTTP ' + response.status);
+
+            document.getElementById('status').textContent =
+                'Shutdown initiated. Pi5-HRO is powering off...';
+        }
+        catch (error)
+        {
+            document.getElementById('status').textContent =
+                'Shutdown request failed: ' + error.message;
+        }
+    });
 
 async function loadConfig()
 {
@@ -318,7 +502,7 @@ async function loadConfig()
     }
 }
 
-document.getElementById('saveButton').addEventListener('click', async function()
+async function saveConfig()
 {
     const longitude = dmsToDecimal(
         document.getElementById('longitude_deg').value,
@@ -383,16 +567,32 @@ document.getElementById('saveButton').addEventListener('click', async function()
 
         document.getElementById('status').textContent =
             'Configuration saved.';
+
+        return true;
     }
     catch (error)
     {
         document.getElementById('status').textContent =
             'Save failed: ' + error.message;
-    }
 
+        return false;
+    }
+}
+
+
+// Save Settings button
+document.getElementById('saveButton').addEventListener('click',
+    async function()
+    {
+        document.getElementById('status').textContent =
+            'Request accepted. Saving settings...';
+
+        await saveConfig();
     });
 
+
 loadConfig();
+loadSystemStatus();
 
 </script>
 

@@ -76,6 +76,11 @@ body {
     margin: 3px;
 }
 
+#audioControls button.audioActive {
+    background-color: #20c060;
+    color: #ffffff;
+}
+
 #audioControls label {
     display: flex;
     align-items: center;
@@ -233,6 +238,15 @@ let nextAudioTime = 0;
 
 const AUDIO_SAMPLE_RATE = 8192;
 
+function updateAudioButtons(isOn)
+{
+    document.getElementById('audioOnButton')
+        .classList.toggle('audioActive', isOn);
+
+    document.getElementById('audioOffButton')
+        .classList.toggle('audioActive', !isOn);
+}
+
 async function startAudio()
 {
     if (!audioContext)
@@ -284,6 +298,8 @@ function connectAudioWebSocket()
     {
         console.log('AUDIO WebSocket connected');
 
+        updateAudioButtons(true);
+
         if (audioContext)
         {
             nextAudioTime = audioContext.currentTime + 0.1;
@@ -299,6 +315,9 @@ function connectAudioWebSocket()
         );
 
         audioSocket = null;
+
+        updateAudioButtons(false);
+
     };
 
     audioSocket.onerror = (event) =>
@@ -378,6 +397,8 @@ document.getElementById('audioVolume').oninput = (event) =>
             Number(event.target.value);
     }
 };
+
+updateAudioButtons(false);
 
 function connectLiveWebSocket()
 {
