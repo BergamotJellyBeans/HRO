@@ -3,8 +3,20 @@
 #include "tab5_helpers.hpp"
 #include "tab5_observation.hpp"
 #include "tab5_storage.hpp"
+#include "tab5_terminal.hpp"
 
 namespace hro::tab5::app {
+void draw_system_info()
+{
+    M5.Display.setFont( &fonts::Font2 );
+    M5.Display.setTextDatum( middle_left );
+    M5.Display.setTextColor( M5.Display.color565( 32, 223, 243 ) );
+    M5.Display.fillRect(12, 680, 280, 24, BLACK);
+    M5.Display.drawString(terminal_mode()
+        ? g_hro_config.source_system_info
+        : "Tab5-HRO   v0.1   ESP32-P4 + RTL-SDR", 12, 692);
+}
+
 
 static int level_db_to_y(float db);
 static int hro_center_bin( void );
@@ -162,7 +174,7 @@ static float hro_max_level_db( const float *spectrum )
 
 void draw_hro_level_history( void )
 {
-    if ( g_hro_history == nullptr ) {
+    if (!terminal_mode() && g_hro_history == nullptr) {
         return;
     }
 
@@ -177,12 +189,10 @@ void draw_hro_level_history( void )
 
         for ( uint16_t h = 0; h < count; ++h ) {
             const float *spectrum = get_hro_history( h );
-            if ( spectrum == nullptr ) {
-                continue;
-            }
+            if (!terminal_mode() && spectrum == nullptr) continue;
 
-            // この1秒の表示範囲内の最大dB
-            const float db = hro_max_level_db( spectrum );
+            const float db = terminal_mode() ? terminal_history_peak(h) : hro_max_level_db(spectrum);
+            if (!std::isfinite(db)) continue;
 
             // 1秒分が占めるX範囲
             const int x0 = first_x + static_cast<int>( static_cast<uint32_t>( h ) * LEVEL_W / HRO_HISTORY_SECONDS );
@@ -207,7 +217,7 @@ void draw_hro_level_history( void )
     g_level_graph.pushSprite( LEVEL_X, LEVEL_Y );
 }
 
-void draw_current_time( void )
+void draw_current_time(time_t observation_time)
 {
     time_t now;
     struct tm timeinfo;
@@ -216,7 +226,8 @@ void draw_current_time( void )
     setenv( "TZ", "JST-9", 1 );
     tzset();
 
-    time( &now );
+    if (observation_time) now = observation_time;
+    else time(&now);
     localtime_r( &now, &timeinfo );
 
     char buf[32];
@@ -231,7 +242,10 @@ void draw_current_time( void )
     // RTC動作中   = オレンジ
     uint16_t bg_color;
 
-    if ( ntp_synced ) {
+    if (observation_time) {
+        strftime(buf, sizeof(buf), "%Y/%m/%d  %H:%M:%S [Pi5]", &timeinfo);
+        bg_color = M5.Display.color565(0, 60, 120);
+    } else if ( ntp_synced ) {
         strftime( buf, sizeof( buf ), "%Y/%m/%d  %H:%M:%S [NTP]", &timeinfo );
         bg_color = M5.Display.color565( 0, 60, 120 );
     } else {

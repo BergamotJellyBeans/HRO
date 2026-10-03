@@ -32,12 +32,12 @@ void save_audio_config_if_needed( void )
     }
 
     // 現在のAudio設定をHRO設定へ反映
-    g_hro_config.audio_volume = g_audio_volume.load( std::memory_order_relaxed );
-    g_hro_config.audio_mute = g_audio_mute.load( std::memory_order_relaxed );
+    stored_hro_config().audio_volume = g_audio_volume.load( std::memory_order_relaxed );
+    stored_hro_config().audio_mute = g_audio_mute.load( std::memory_order_relaxed );
 
     if ( save_hro_config() ) {
         g_audio_config_dirty.store( false, std::memory_order_relaxed );
-        ESP_LOGI( TAG, "Audio config saved: volume=%d mute=%d", g_hro_config.audio_volume, g_hro_config.audio_mute ? 1 : 0 );
+        ESP_LOGI( TAG, "Audio config saved: volume=%d mute=%d", stored_hro_config().audio_volume, stored_hro_config().audio_mute ? 1 : 0 );
     }
 }
 
@@ -50,8 +50,9 @@ void hro_audio_task( void *arg )
 
     for ( ;; ) {
         AudioBlock incoming;
-        if ( xQueueReceive( g_audio_queue, &incoming, portMAX_DELAY ) != pdTRUE ) {
-            continue;
+        if ( xQueueReceive( g_audio_queue, &incoming, pdMS_TO_TICKS(20) ) != pdTRUE ) {
+            if (g_touch_beep_samples.load(std::memory_order_relaxed) <= 0) continue;
+            memset(&incoming, 0, sizeof(incoming));
         }
 
         block_count++;

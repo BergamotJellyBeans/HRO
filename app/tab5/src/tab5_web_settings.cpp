@@ -11,9 +11,9 @@ esp_err_t station_get_handler( httpd_req_t *req )
 {
     ESP_LOGI( TAG, "Station settings requested" );
 
-    const double frequency_mhz = static_cast<double>( g_hro_config.frequency_hz ) / 1000000.0;
-    DmsValue lon = longitude_to_dms( g_hro_config.longitude );
-    DmsValue lat = latitude_to_dms( g_hro_config.latitude );
+    const double frequency_mhz = static_cast<double>( stored_hro_config().frequency_hz ) / 1000000.0;
+    DmsValue lon = longitude_to_dms( stored_hro_config().longitude );
+    DmsValue lat = latitude_to_dms( stored_hro_config().latitude );
 
     constexpr size_t GAIN_OPTIONS_SIZE = 2048;
     char* gain_options = static_cast<char*>(heap_caps_calloc(
@@ -28,7 +28,7 @@ esp_err_t station_get_handler( httpd_req_t *req )
         const int written = snprintf(gain_options + gain_used,
             GAIN_OPTIONS_SIZE - gain_used,
             "<option value=\"%d\" %s>%.1f</option>", gain,
-            gain == g_hro_config.sdr_gain ? "selected" : "", gain / 10.0);
+            gain == stored_hro_config().sdr_gain ? "selected" : "", gain / 10.0);
         if (written < 0 || static_cast<size_t>(written) >= GAIN_OPTIONS_SIZE - gain_used) {
             free(gain_options);
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Gain list too large");
@@ -170,6 +170,10 @@ esp_err_t station_get_handler( httpd_req_t *req )
 
         "<form method=\"POST\" action=\"/station/save\">"
 
+        "<h2>Pi5 Display Terminal</h2>"
+        "<label>Pi5 IP Address</label>"
+        "<input name=\"pi5_address\" type=\"text\" maxlength=\"15\" value=\"%s\" placeholder=\"192.168.0.10\">"
+        "<p class=\"note\">Restart Tab5 after saving. Without an SDR connected at startup, Tab5 displays Pi5 data.</p>"
         "<h2>Station</h2>"
 
         "<label>Observer</label>"
@@ -430,8 +434,9 @@ esp_err_t station_get_handler( httpd_req_t *req )
         "</body>"
         "</html>",
 
-        g_hro_config.observer,
-        g_hro_config.location,
+        stored_hro_config().pi5_address,
+        stored_hro_config().observer,
+        stored_hro_config().location,
 
         ( lon.direction == 'E' ) ? "selected" : "",
         ( lon.direction == 'W' ) ? "selected" : "",
@@ -445,15 +450,15 @@ esp_err_t station_get_handler( httpd_req_t *req )
         lat.minutes,
         lat.seconds,
 
-        g_hro_config.receiver,
+        stored_hro_config().receiver,
         frequency_mhz,
 
         gain_options,
-        static_cast<long>( g_hro_config.fft_center_hz ),
-        static_cast<long>( g_hro_config.level_average_range_hz ),
+        static_cast<long>( stored_hro_config().fft_center_hz ),
+        static_cast<long>( stored_hro_config().level_average_range_hz ),
 
-        g_hro_config.antenna,
-        g_hro_config.screenshot_prefix,
+        stored_hro_config().antenna,
+        stored_hro_config().screenshot_prefix,
         hro::FFT_RANGE_HZ
     );
 
@@ -498,9 +503,17 @@ esp_err_t station_save_handler( httpd_req_t *req )
     body[received] = '\0';
 
     // 現在値をベースに一時設定を作る
-    Tab5Config new_config = g_hro_config;
+    Tab5Config new_config = stored_hro_config();
 
     char value[256];
+    if (get_form_value(body, "pi5_address", value, sizeof(value))) {
+        if (strlen(value) >= sizeof(new_config.pi5_address)) {
+            free(body);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Pi5 IP address is too long");
+            return ESP_FAIL;
+        }
+        snprintf(new_config.pi5_address, sizeof(new_config.pi5_address), "%.15s", value);
+    }
 
     // -------------------------
     // Station
@@ -669,11 +682,11 @@ esp_err_t station_save_handler( httpd_req_t *req )
     }
 
     // 全処理成功後に現在設定を更新
-    g_hro_config = new_config;
+    stored_hro_config() = new_config;
 
     ESP_LOGI( TAG, "Station settings saved" );
 
-    ESP_LOGI( TAG, "HRO: RF=%lu Hz FFT center=%ld Hz range=+/- %ld Hz", static_cast<unsigned long>( g_hro_config.frequency_hz ), static_cast<long>( g_hro_config.fft_center_hz ), static_cast<long>( g_hro_config.fft_range_hz ) );
+    ESP_LOGI( TAG, "HRO: RF=%lu Hz FFT center=%ld Hz range=+/- %ld Hz", static_cast<unsigned long>( stored_hro_config().frequency_hz ), static_cast<long>( stored_hro_config().fft_center_hz ), static_cast<long>( stored_hro_config().fft_range_hz ) );
 
     // 保存後 /station へ戻す
     httpd_resp_set_status( req, "303 See Other" );

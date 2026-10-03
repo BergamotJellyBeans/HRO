@@ -15,6 +15,8 @@ static void apply_sdr_gain(int gain)
 }
 
 static std::atomic<bool> g_rtl_ready{false};
+static std::atomic<bool> g_rtl_recognized{false};
+bool rtl_recognized() { return g_rtl_recognized.load(std::memory_order_acquire); }
 static std::atomic<bool> g_stream_started{false};
 static std::atomic<uint32_t> g_interval_bytes{0};
 static std::atomic<uint32_t> g_interval_blocks{0};
@@ -30,6 +32,7 @@ void rtl_event_callback( esp_rtl_sdr_event_t event, const void *payload, void *u
 
     switch ( event ) {
     case ESP_RTL_SDR_EVT_ENUMERATED: {
+        g_rtl_recognized.store(true, std::memory_order_release);
         const auto *info = static_cast<const esp_rtl_sdr_device_info_t *>( payload );
         if ( info != nullptr ) {
             ESP_LOGI( TAG, "RTL enumerated VID=%04x PID=%04x serial=%s USB=%s",

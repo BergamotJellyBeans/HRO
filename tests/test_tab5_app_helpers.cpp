@@ -30,6 +30,13 @@ int main() {
    c.sdr_gain = gain; CHECK(!validate_hro_config(c,out,sizeof out));
  }
  c.sdr_gain = hro::DEFAULT_SDR_GAIN;
+ for (const char* address : {"192.168.0.32", "10.0.0.1", ""}) {
+   std::strcpy(c.pi5_address,address); CHECK(validate_hro_config(c,out,sizeof out));
+ }
+ for (const char* address : {"256.1.2.3", "224.0.0.1", "1.2.3", "1.2.3.4x", "-1.2.3.4"}) {
+   std::strcpy(c.pi5_address,address); CHECK(!validate_hro_config(c,out,sizeof out));
+ }
+ c.pi5_address[0] = '\0';
  CHECK(validate_hro_config(c,out,sizeof out));
  auto t=calculate_tuning(c); CHECK(t.actual_lo_hz==53436000); CHECK(t.actual_if_hz==-64000); CHECK(t.nco_shift_hz==780);
  c.frequency_hz+=123; t=calculate_tuning(c); CHECK(t.nco_shift_hz==657);

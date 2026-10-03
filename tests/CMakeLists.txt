@@ -1,3 +1,7 @@
+add_executable(test_hro_live_packet test_hro_live_packet.cpp)
+target_link_libraries(test_hro_live_packet PRIVATE hro_core)
+add_test(NAME hro_live_packet COMMAND test_hro_live_packet)
+
 if(TARGET hro_raspberrypi)
 add_executable(test_observation_file_manager
     test_observation_file_manager.cpp

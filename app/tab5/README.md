@@ -39,6 +39,35 @@ the default. PNG files remain under `/tab5-hro/`, using the configured prefix.
 PNG blocks end at each hour's **00, 20, and 40 minutes**. A startup partial block
 is skipped, so the first PNG can take up to about 40 minutes to appear.
 
+## ターミナルモード
+
+起動時にUSBのSDR認識を最大8秒待ちます。認識した場合は従来の単体観測、
+認識しない場合はターミナルモードになります。起動後はモードを固定します。
+SDRを認識した後のストリーム開始エラーではモードを変更しません。
+
+Tab5のWeb設定 `/station` に追加した `Pi5 IP Address` を保存して再起動します。
+SDの `config.ini` には次の項目が保存されます。
+
+```ini
+[pi5]
+address=192.168.0.10
+```
+
+IPアドレスは実際のPi5に合わせます。Wi-Fi接続後にUDP 50003へ登録要求を送り、
+5秒ごとに更新します。登録応答の設定をLCD表示に反映し、UDP 50000のFFT・Peak・
+観測時刻と50002の音声を受信します。表示時刻の出所は `[Pi5]` と表示します。
+Pi5が提供する過去履歴の再送はないため、接続後のデータから20分履歴を蓄積します。
+通信断の区間は空白にします。ターミナルモードではPNGの生成・SD保存を行いません。
+タッチ音、音量、シャットダウン操作は継続して使えます。
+SDカードはベース画像の読込とTab5自身の設定保存に使います。
+スタンドアロンモードでは従来どおり20分ごとのPNG保存を行います。
+
+Pi5の表示設定はメモリ上で使います。Tab5自身の観測設定・接続先・音声設定を
+Pi5の設定で上書きしてSD保存しません。WebフォームはTab5自身の設定を編集します。
+
+`tab5_terminal` は接続・受信と表示への受け渡し、`tab5_terminal_config` は設定応答の
+解析を担当します。`core/include/hro_live_packet.h` は機種に依存しないUDPパケット解析です。
+
 ## Shared and platform-specific code
 
 - `core/include/hro_plot.h`: 1280×480 PNG geometry, 1200-second blocks, frequency
@@ -140,7 +169,7 @@ FFT Display Range入力は廃止し、±300Hzを共通仕様として使用し�
 
 - `core/include` / `core/src`: 機器に依存しない共通DSP・観測仕様
 - `platform/raspberrypi`: Pi5固有のRTL-SDR・ファイル管理
-- `platform/tab5`: Tab5固有の256 kS/s受信前段
+- `platform/tab5`: Tab5固有の256 kS/s受信前段・SDカード・RTC
 - `app/pi`: Pi5アプリの起動・機能の組み合わせ
 - `app/tab5/main`: ESP-IDF起動入口・コンポーネント登録・依存関係
 - `app/tab5/include`: Tab5アプリの機能別インターフェース
@@ -149,6 +178,17 @@ FFT Display Range入力は廃止し、±300Hzを共通仕様として使用し�
 
 ESP-IDFは `main` を標準の入口コンポーネントとして扱うため、この小さな入口は残します。
 `main` の登録で `src` のファイルをビルドし、公開ヘッダーと内部ヘッダーの検索先を分離します。
-表示、SD、Wi-Fiなどの機器APIを使うアプリ処理はまだ `src` にあります。
+表示やWi-Fiなどの機器APIを使うアプリ処理はまだ `src` にあります。
+SDとRTCのアクセスは `platform/tab5` に分離しています。
 今後は機器APIを専用インターフェースへ切り出して `platform/tab5` へ移す際にも、
 タスク間状態を機器層から参照する依存関係を作らないようにします。
+
+### SDカードとRTCの機器層
+
+`platform/tab5/tab5_sdcard.cpp` が配線、電源LDO、マウント状態とPSRAMへの読み込みを扱います。
+アプリの `tab5_storage.cpp` は終了前の未保存設定の保存と、終了可能状態の管理を扱います。
+`platform/tab5/tab5_rtc.cpp` がM5Unifiedを使ったRTCアクセスを扱います。
+アプリの `tab5_time.cpp` はNTP、UTC/JST変換、時刻検証とシステム時刻復元を扱います。
+機器層はアプリの内部ヘッダーやグローバル設定を参照しません。
+配置変更後は `idf.py reconfigure build` を実行し、RTC復元・NTP同期・
+SD読込・PNG保存・安全終了を実機で確認してください。

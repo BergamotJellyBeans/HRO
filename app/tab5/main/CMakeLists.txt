@@ -18,6 +18,8 @@ idf_component_register(
         "../src/tab5_fft.cpp"
         "../src/tab5_helpers.cpp"
         "../src/tab5_application.cpp"
+        "../src/tab5_terminal.cpp"
+        "../src/tab5_terminal_config.cpp"
 
     INCLUDE_DIRS "../include"
     PRIV_INCLUDE_DIRS "../src/internal"
@@ -25,6 +27,6 @@ idf_component_register(
     PRIV_REQUIRES
         fatfs sdmmc esp_driver_sdmmc
         esp_timer esp_wifi esp_event esp_netif
-        nvs_flash esp_http_server lwip
+        nvs_flash esp_http_server lwip json
         esp_rtl_sdr m5stack__m5unified espressif__esp-dsp
 )

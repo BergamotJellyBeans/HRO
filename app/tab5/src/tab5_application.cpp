@@ -10,8 +10,46 @@
 #include "tab5_storage.hpp"
 #include "tab5_time.hpp"
 #include "tab5_wifi.hpp"
+#include "tab5_terminal.hpp"
 
 namespace hro::tab5::app {
+static void start_display_and_audio()
+{
+    // スペクトルグラフ表示側はCore 0
+    BaseType_t hro_display_task_result =
+        xTaskCreatePinnedToCore(
+            hro_display_task,
+            "hro_display",
+            8192,
+            nullptr,
+            2,
+            nullptr,
+            0 );	// CPU0
+
+    if ( hro_display_task_result != pdPASS ) {
+        ESP_LOGE( TAG, "Failed to create hro_display task" );
+        return;
+    }
+
+    // AudioタスクはCore 0
+    BaseType_t hro_audio_task_result =
+        xTaskCreatePinnedToCore(
+        hro_audio_task,
+        "hro_audio",
+        4096,
+        nullptr,
+        3,
+        nullptr,
+        0
+    );
+
+    if ( hro_audio_task_result != pdPASS ) {
+        ESP_LOGE( TAG, "Failed to create hro_audio task" );
+        return;
+    }
+
+}
+
 
 
 
@@ -90,6 +128,7 @@ void start()
     g_audio_volume.store( g_hro_config.audio_volume, std::memory_order_relaxed );
     g_audio_mute.store( g_hro_config.audio_mute, std::memory_order_relaxed );
     draw_audio_controls();
+    draw_system_info();
 
     HroTuning tuning = make_hro_tuning();
     g_hro_lo_frequency_hz = tuning.actual_lo_hz;
@@ -118,6 +157,57 @@ void start()
         ESP_LOGE( TAG, "Failed to create audio queue" );
         return;
     }
+
+    wifi_start_ap(saved_ssid, saved_password);
+
+    // --------------------------------------------------------
+    // esp_rtl_sdr
+    // --------------------------------------------------------
+    esp_rtl_sdr_config_t cfg;
+    esp_rtl_sdr_config_default( &cfg );
+
+    cfg.event_cb = rtl_event_callback;
+
+    // OrcSDRで実績のある設定
+    cfg.transfer_bytes = 32768;
+    cfg.transfer_count = 3;
+
+    // USB owner task
+    cfg.usb_task_core_id = 0;
+
+    // pull ringは不要
+    cfg.delivery_mode = ESP_RTL_SDR_DELIVERY_CALLBACK;
+
+    esp_err_t err = esp_rtl_sdr_config_validate( &cfg );
+
+    if ( err != ESP_OK ) {
+        ESP_LOGE( TAG, "RTL config invalid: %s", esp_rtl_sdr_err_to_name( err ) );
+        return;
+    }
+
+    err = esp_rtl_sdr_install( &cfg, &g_rtl );
+
+    if ( err != ESP_OK ) {
+        ESP_LOGE( TAG, "RTL install failed: %s", esp_rtl_sdr_err_to_name( err ) );
+        return;
+    }
+
+    ESP_LOGI( TAG, "esp_rtl_sdr installed v%s", esp_rtl_sdr_get_version_string() );
+
+    ESP_LOGI(TAG, "Checking startup SDR connection (up to 8 seconds)...");
+    const int64_t detect_deadline = esp_timer_get_time() + 8000000;
+    while (!rtl_recognized() && esp_timer_get_time() < detect_deadline)
+        vTaskDelay(pdMS_TO_TICKS(50));
+    if (!rtl_recognized()) {
+        ESP_LOGI(TAG, "MODE: terminal (no startup SDR)");
+        if (!start_terminal_mode()) {
+            ESP_LOGE(TAG, "Failed to start Pi5 terminal");
+            return;
+        }
+        start_display_and_audio();
+        return;
+    }
+    ESP_LOGI(TAG, "MODE: standalone SDR observation");
 
     // --------------------------------------------------------
     // IQ ring buffer / queues
@@ -228,31 +318,6 @@ void start()
         return;
     }
 
-    // --------------------------------------------------------
-    // esp_rtl_sdr
-    // --------------------------------------------------------
-    esp_rtl_sdr_config_t cfg;
-    esp_rtl_sdr_config_default( &cfg );
-
-    cfg.event_cb = rtl_event_callback;
-
-    // OrcSDRで実績のある設定
-    cfg.transfer_bytes = 32768;
-    cfg.transfer_count = 3;
-
-    // USB owner task
-    cfg.usb_task_core_id = 0;
-
-    // pull ringは不要
-    cfg.delivery_mode = ESP_RTL_SDR_DELIVERY_CALLBACK;
-
-    esp_err_t err = esp_rtl_sdr_config_validate( &cfg );
-
-    if ( err != ESP_OK ) {
-        ESP_LOGE( TAG, "RTL config invalid: %s", esp_rtl_sdr_err_to_name( err ) );
-        return;
-    }
-
     BaseType_t task_ok = xTaskCreatePinnedToCore(
         hro_dsp_task,
         "hro_dsp",
@@ -266,15 +331,6 @@ void start()
         ESP_LOGE( TAG, "Failed to create HRO DSP task" );
         return;
     }
-
-    err = esp_rtl_sdr_install( &cfg, &g_rtl );
-
-    if ( err != ESP_OK ) {
-        ESP_LOGE( TAG, "RTL install failed: %s", esp_rtl_sdr_err_to_name( err ) );
-        return;
-    }
-
-    ESP_LOGI( TAG, "esp_rtl_sdr installed v%s", esp_rtl_sdr_get_version_string() );
 
     // RTL制御/DSP側はCore 1
     BaseType_t hro_radio_task_result =
@@ -292,40 +348,7 @@ void start()
         return;
     }
 
-    // スペクトルグラフ表示側はCore 0
-    BaseType_t hro_display_task_result =
-        xTaskCreatePinnedToCore(
-            hro_display_task,
-            "hro_display",
-            8192,
-            nullptr,
-            2,
-            nullptr,
-            0 );	// CPU0
-
-    if ( hro_display_task_result != pdPASS ) {
-        ESP_LOGE( TAG, "Failed to create hro_display task" );
-        return;
-    }
-
-    // AudioタスクはCore 0
-    BaseType_t hro_audio_task_result =
-        xTaskCreatePinnedToCore(
-        hro_audio_task,
-        "hro_audio",
-        4096,
-        nullptr,
-        3,
-        nullptr,
-        0
-    );
-
-    if ( hro_audio_task_result != pdPASS ) {
-        ESP_LOGE( TAG, "Failed to create hro_audio task" );
-        return;
-    }
-
-    wifi_start_ap( saved_ssid, saved_password );
+    start_display_and_audio();
 }
 
 } // namespace hro::tab5::app

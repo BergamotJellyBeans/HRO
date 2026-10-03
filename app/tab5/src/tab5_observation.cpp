@@ -6,6 +6,7 @@
 #include "tab5_helpers.hpp"
 #include "tab5_png.hpp"
 #include "tab5_storage.hpp"
+#include "tab5_terminal.hpp"
 
 namespace hro::tab5::app {
 static time_t g_screenshot_block_start = 0;
@@ -42,52 +43,56 @@ void hro_display_task( void *arg )
             save_audio_config_if_needed();	// Audio設定変更から2秒後にSDへ保存
         }
 
+        poll_terminal_display();
         const uint32_t sequence = g_hro_spectrum_sequence.load( std::memory_order_acquire );
 
         if ( sequence != last_sequence ) {
             last_sequence = sequence;
 
-            const time_t now = time( nullptr );
-            const time_t current_block_start = get_screenshot_block_start( now );
+            const time_t now = terminal_mode() ? terminal_observation_time() : time(nullptr);
+            // PNG recording belongs only to standalone observation.
+            if (!terminal_mode()) {
+                const time_t current_block_start = get_screenshot_block_start( now );
 
-            if ( g_screenshot_block_start == 0 ) {
-                // NTP同期後、現在の20分ブロックに参加する。
-                // このブロックは途中からなので保存対象にはしない。
-                g_screenshot_block_start = current_block_start;
-                screenshot_full_block_ready = false;
-                ESP_LOGI( TAG, "Screenshot block started: %lld (partial block)", static_cast<long long>( g_screenshot_block_start ) );
+                if ( g_screenshot_block_start == 0 ) {
+                    // NTP同期後、現在の20分ブロックに参加する。
+                    // このブロックは途中からなので保存対象にはしない。
+                    g_screenshot_block_start = current_block_start;
+                    screenshot_full_block_ready = false;
+                    ESP_LOGI( TAG, "Screenshot block started: %lld (partial block)", static_cast<long long>( g_screenshot_block_start ) );
 
-            } else if ( current_block_start != g_screenshot_block_start ) {
-                const time_t completed_block_start = g_screenshot_block_start;
-                if ( screenshot_full_block_ready ) {
-                    char filename[64];
-                    if ( make_screenshot_filename( completed_block_start, filename, sizeof( filename ) ) ) {
-                        ESP_LOGI( TAG, "Screenshot block completed: filename=%s", filename );
+                } else if ( current_block_start != g_screenshot_block_start ) {
+                    const time_t completed_block_start = g_screenshot_block_start;
+                    if ( screenshot_full_block_ready ) {
+                        char filename[64];
+                        if ( make_screenshot_filename( completed_block_start, filename, sizeof( filename ) ) ) {
+                            ESP_LOGI( TAG, "Screenshot block completed: filename=%s", filename );
+                        }
+                        // 時刻ラベル正規化
+                        draw_waterfall_time_axis( completed_block_start + TOTAL_SEC );
+
+                        // PNGに記録する情報を一時的にLCDへ表示
+                        draw_screenshot_info( completed_block_start, filename );
+
+                        // 表示した情報も含めてPNG保存
+                        const bool saved = save_screenshot_png( completed_block_start, filename );
+
+                        // 一時表示を消す
+                        clear_screenshot_info();
+
+                        if ( !saved ) {
+                            ESP_LOGE( TAG, "Screenshot block save failed: %s", filename );
+                        }
+                    } else {
+                        ESP_LOGI( TAG, "Screenshot partial block skipped" );
                     }
-                    // 時刻ラベル正規化
-                    draw_waterfall_time_axis( completed_block_start + TOTAL_SEC );
 
-                    // PNGに記録する情報を一時的にLCDへ表示
-                    draw_screenshot_info( completed_block_start, filename );
+                    // 新しい20分ブロックへ切り替える
+                    g_screenshot_block_start = current_block_start;
+                    screenshot_full_block_ready = true;
 
-                    // 表示した情報も含めてPNG保存
-                    const bool saved = save_screenshot_png( completed_block_start, filename );
-
-                    // 一時表示を消す
-                    clear_screenshot_info();
-
-                    if ( !saved ) {
-                        ESP_LOGE( TAG, "Screenshot block save failed: %s", filename );
-                    }
-                } else {
-                    ESP_LOGI( TAG, "Screenshot partial block skipped" );
+                    ESP_LOGI( TAG, "Screenshot block started: %lld", static_cast<long long>( g_screenshot_block_start ) );
                 }
-
-                // 新しい20分ブロックへ切り替える
-                g_screenshot_block_start = current_block_start;
-                screenshot_full_block_ready = true;
-
-                ESP_LOGI( TAG, "Screenshot block started: %lld", static_cast<long long>( g_screenshot_block_start ) );
             }
 
             // 境界処理が終わってから今回のSpectrumを描く
@@ -106,9 +111,9 @@ void hro_display_task( void *arg )
             }
 
             const int64_t axis_start_us = esp_timer_get_time();
-            draw_waterfall_time_axis();
+            draw_waterfall_time_axis(terminal_mode() ? now : 0);
             const int64_t axis_done_us = esp_timer_get_time();
-            draw_current_time();
+            draw_current_time(terminal_mode() ? now : 0);
             if (++draw_count % 10 == 0) {
                 ESP_LOGI(TAG, "LCD: waterfall=%lld us level=%lld us time_axis=%lld us",
                          static_cast<long long>(waterfall_done_us - draw_start_us),

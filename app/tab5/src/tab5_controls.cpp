@@ -100,6 +100,8 @@ void handle_audio_touch()
 
         g_shutdown_holding = true;
         g_shutdown_press_us = esp_timer_get_time();
+        // 長押しの開始を短いタッチ音で知らせる。
+        play_touch_beep();
 
         ESP_LOGI( TAG, "SHUTDOWN hold started" );
         return;

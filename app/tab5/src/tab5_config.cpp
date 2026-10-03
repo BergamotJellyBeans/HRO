@@ -39,11 +39,22 @@ Tab5Config g_hro_config = {
     .fft_range_hz  = hro::FFT_RANGE_HZ,
     .level_average_range_hz = 5,
 
+    .pi5_address = "",
+    .source_system_info = "",
     .audio_volume = 20,
     .audio_mute   = false,
 
     .screenshot_prefix = "HRO",
 };
+
+static Tab5Config g_stored_config{};
+static bool g_remote_display = false;
+
+Tab5Config& stored_hro_config()
+{ return g_remote_display ? g_stored_config : g_hro_config; }
+
+void preserve_standalone_config()
+{ g_stored_config = g_hro_config; g_remote_display = true; }
 
 //------------------------------------------------------------------------------
 // trim_string
@@ -126,6 +137,7 @@ bool write_hro_config_file( const char *filename, const Tab5Config &cfg )
     fprintf( fp, "level_average_range_hz=%ld\n", static_cast<long>( cfg.level_average_range_hz ) );
     fprintf( fp, "\n" );
 
+    fprintf( fp, "[pi5]\naddress=%s\n\n", cfg.pi5_address );
     fprintf( fp, "[audio]\n" );
     fprintf( fp, "volume=%d\n", cfg.audio_volume );
     fprintf( fp, "mute=%d\n", cfg.audio_mute ? 1 : 0 );
@@ -149,7 +161,7 @@ bool save_hro_config( void )
 {
     mkdir( HRO_CONFIG_DIR, 0775 );
 
-    if ( !write_hro_config_file( HRO_CONFIG_FILE, g_hro_config ) ) {
+    if ( !write_hro_config_file( HRO_CONFIG_FILE, stored_hro_config() ) ) {
         ESP_LOGE( TAG, "Failed to save HRO config: %s", HRO_CONFIG_FILE );
         return false;
     }
@@ -234,6 +246,10 @@ bool load_hro_config( void )
                 g_hro_config.fft_range_hz = static_cast<int32_t>( strtol( value, nullptr, 10 ) );
             } else if ( strcmp( key, "level_average_range_hz" ) == 0 ) {
                 g_hro_config.level_average_range_hz = atoi( value );
+            }
+        } else if ( strcmp( section, "pi5" ) == 0 ) {
+            if ( strcmp( key, "address" ) == 0 ) {
+                snprintf(g_hro_config.pi5_address, sizeof(g_hro_config.pi5_address), "%.15s", value);
             }
         } else if ( strcmp( section, "audio" ) == 0 ) {
             if ( strcmp( key, "volume" ) == 0 ) {

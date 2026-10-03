@@ -1,5 +1,6 @@
 #include "tab5_runtime.hpp"
 #include "tab5_time.hpp"
+#include "tab5_rtc.h"
 
 namespace hro::tab5::app {
 static bool g_ntp_started = false;
@@ -20,8 +21,8 @@ static void time_sync_notification_cb( struct timeval *tv )
     ESP_LOGI( TAG, "UTC time: %s", buf );
 
     // NTPのUTC時刻をTab5 RTCへ保存
-    if ( M5.Rtc.isEnabled() ) {
-        m5::rtc_datetime_t rtc_dt = {
+    if ( device::rtc_enabled() ) {
+        device::RtcDateTime rtc_dt = {
             {
                 static_cast<int16_t>( utc_time.tm_year + 1900 ),
                 static_cast<int8_t>( utc_time.tm_mon + 1 ),
@@ -34,9 +35,9 @@ static void time_sync_notification_cb( struct timeval *tv )
             }
         };
         g_ntp_synced.store( true, std::memory_order_relaxed );
-        M5.Rtc.setDateTime( rtc_dt );
+        device::write_rtc( rtc_dt );
         ESP_LOGI( TAG, "RTC synchronized from NTP (UTC)" );
-        auto verify = M5.Rtc.getDateTime();
+        auto verify = device::read_rtc();
         ESP_LOGI(
             TAG,
             "RTC readback: %04d-%02d-%02d %02d:%02d:%02d UTC",
@@ -71,12 +72,12 @@ void start_ntp( void )
 
 bool restore_system_time_from_rtc( void )
 {
-    if ( !M5.Rtc.isEnabled() ) {
+    if ( !device::rtc_enabled() ) {
         ESP_LOGW( TAG, "RTC is not available" );
         return false;
     }
 
-    auto rtc_dt = M5.Rtc.getDateTime();
+    auto rtc_dt = device::read_rtc();
     ESP_LOGI(
         TAG,
         "RTC at boot: %04d-%02d-%02d "

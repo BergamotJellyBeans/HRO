@@ -29,6 +29,10 @@ struct Tab5Config
     int32_t  fft_range_hz;
     int32_t  level_average_range_hz;
 
+    // Pi5 display terminal (IPv4, empty means not configured)
+    char pi5_address[16];
+    char source_system_info[128]; // Remote display text; never written to config.ini.
+
     // Audio
     int  audio_volume;
     bool audio_mute;
@@ -56,6 +60,8 @@ struct HroTuning
 // Global configuration
 //------------------------------------------------------------------------------
 extern Tab5Config g_hro_config;
+Tab5Config& stored_hro_config();
+void preserve_standalone_config();
 
 //------------------------------------------------------------------------------
 // Configuration file paths
@@ -78,7 +84,8 @@ bool is_valid_file_prefix( const char *prefix );
 bool validate_hro_config(
     const Tab5Config &cfg,
     char *error_msg,
-    size_t error_msg_size
+    size_t error_msg_size,
+    bool allow_pi5_gain = false
 );
 
 bool write_hro_config_file(

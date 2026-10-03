@@ -43,7 +43,7 @@ bool is_valid_file_prefix( const char *prefix )
 //
 // HRO設定値が現在のDSP・表示条件の範囲内か検証する。
 //------------------------------------------------------------------------------
-bool validate_hro_config( const Tab5Config &cfg, char *error_msg, size_t error_msg_size )
+bool validate_hro_config( const Tab5Config &cfg, char *error_msg, size_t error_msg_size, bool allow_pi5_gain )
 {
     auto set_error = [&]( const char *msg ) {
         if ( error_msg && error_msg_size > 0 ) {
@@ -52,6 +52,16 @@ bool validate_hro_config( const Tab5Config &cfg, char *error_msg, size_t error_m
 
         return false;
     };
+
+    if (cfg.pi5_address[0]) {
+        unsigned a, b, c, d; char extra;
+        if (sscanf(cfg.pi5_address, "%u.%u.%u.%u%c", &a, &b, &c, &d, &extra) != 4 ||
+            a == 0 || a >= 224 || b > 255 || c > 255 || d > 255)
+            return set_error("Pi5 address must be a unicast IPv4 address");
+        for (const char* p = cfg.pi5_address; *p; ++p)
+            if (!(*p >= '0' && *p <= '9') && *p != '.')
+                return set_error("Invalid Pi5 IPv4 address");
+    }
 
     // Station position
     if ( cfg.latitude < -90.0 || cfg.latitude > 90.0 ) {
@@ -62,7 +72,7 @@ bool validate_hro_config( const Tab5Config &cfg, char *error_msg, size_t error_m
         return set_error( "Longitude must be between -180 and +180 degrees" );
     }
 
-    if (!is_valid_tab5_sdr_gain(cfg.sdr_gain)) {
+    if (!is_valid_tab5_sdr_gain(cfg.sdr_gain) && !(allow_pi5_gain && cfg.sdr_gain == 480)) {
         return set_error("Select a supported SDR gain");
     }
 

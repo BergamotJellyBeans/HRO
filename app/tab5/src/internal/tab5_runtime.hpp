@@ -19,11 +19,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
-#include "esp_vfs_fat.h"
-#include "sdmmc_cmd.h"
-#include "driver/sdmmc_host.h"
-#include "sd_pwr_ctrl_by_on_chip_ldo.h"
-#include <dirent.h>
 
 #include <M5Unified.h>
 #include "esp_rtl_sdr.h"
@@ -45,6 +40,7 @@
 #include "dsp/spectrum_math.h"
 #include "dsp/resampler_16_125.h"
 #include "tab5_frontend.h"
+#include "tab5_sdcard.h"
 #include "tab5_helpers.hpp"
 
 namespace hro::tab5::app {
@@ -83,7 +79,7 @@ inline constexpr float HRO_TEST_TONE_HZ = 1000.0f;
 
 inline constexpr float TWO_PI = 6.2831853071795864769f;
 
-inline const char *SD_MOUNT_POINT = "/sdcard";
+inline constexpr const char *SD_MOUNT_POINT = device::SD_MOUNT_POINT;
 
 inline constexpr size_t DECIM_BUFFER_SAMPLES = 1024;
 
