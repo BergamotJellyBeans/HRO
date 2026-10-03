@@ -145,9 +145,9 @@ add_test(NAME tab5_frontend COMMAND test_tab5_frontend)
 
 # Tab5 application rules can be checked on a Mac without hardware or ESP-IDF.
 add_executable(test_tab5_app_helpers test_tab5_app_helpers.cpp
-    ../app/tab5/main/tab5_helpers.cpp
-    ../app/tab5/main/tab5_config_validation.cpp)
+    ../app/tab5/src/tab5_helpers.cpp
+    ../app/tab5/src/tab5_config_validation.cpp)
 target_include_directories(test_tab5_app_helpers PRIVATE
-    ../app/tab5/main ../platform/tab5/include)
+    ../app/tab5/include ../platform/tab5/include)
 target_link_libraries(test_tab5_app_helpers PRIVATE hro_core)
 add_test(NAME tab5_app_helpers COMMAND test_tab5_app_helpers)

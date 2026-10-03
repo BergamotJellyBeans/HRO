@@ -82,7 +82,8 @@ verified for this integrated target.
 
 ## 機能別の構成
 
-`main/main.cpp` は起動入口のみです。`tab5_application` が初期化とタスク起動を担当します。
+`main/main.cpp` は起動入口のみです。機能別の実装は `src/`、公開ヘッダーは `include/` に置きます。
+内部のタスク共有状態は `src/internal/tab5_runtime.hpp` と `src/tab5_runtime.cpp` に置きます。`tab5_application` が初期化とタスク起動を担当します。
 
 | ファイル | 担当 |
 | --- | --- |
@@ -134,3 +135,20 @@ Tab5のドライバーに設定段のない48.0dBは候補から除外してい�
 ゲインはconfig.iniへ保存し、次回起動時にのみ適用します。
 稼働中の受信設定は変更しません。Web画面にも再起動後の反映を案内します。
 FFT Display Range入力は廃止し、±300Hzを共通仕様として使用します。
+
+## Pi5とTab5の配置ルール
+
+- `core/include` / `core/src`: 機器に依存しない共通DSP・観測仕様
+- `platform/raspberrypi`: Pi5固有のRTL-SDR・ファイル管理
+- `platform/tab5`: Tab5固有の256 kS/s受信前段
+- `app/pi`: Pi5アプリの起動・機能の組み合わせ
+- `app/tab5/main`: ESP-IDF起動入口・コンポーネント登録・依存関係
+- `app/tab5/include`: Tab5アプリの機能別インターフェース
+- `app/tab5/src`: 設定・受信タスク・表示・保存・音声・ネットワークの実装
+- `app/tab5/src/internal`: アプリ内部のタスク間共有状態
+
+ESP-IDFは `main` を標準の入口コンポーネントとして扱うため、この小さな入口は残します。
+`main` の登録で `src` のファイルをビルドし、公開ヘッダーと内部ヘッダーの検索先を分離します。
+表示、SD、Wi-Fiなどの機器APIを使うアプリ処理はまだ `src` にあります。
+今後は機器APIを専用インターフェースへ切り出して `platform/tab5` へ移す際にも、
+タスク間状態を機器層から参照する依存関係を作らないようにします。
