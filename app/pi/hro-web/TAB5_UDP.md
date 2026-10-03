@@ -1,0 +1,48 @@
+# Tab5 display terminal UDP protocol (version 1)
+
+`hro-web` receives registration requests on UDP port 50003. The terminal
+sends a UTF-8 JSON datagram after Wi-Fi connects and renews every 5 seconds.
+The reply goes to the request's source IP and source port.
+
+```json
+{"type":"register","version":1,"request_id":1,"device":"Tab5-HRO","data_port":50000,"audio_port":50002}
+```
+
+`request_id` is a nonnegative integer, incremented for each request. Version 1
+requires the two ports shown above. At most eight terminal IP addresses can
+register simultaneously; another request from the same IP renews that client.
+
+On success the server replies with `type: "register_ack"`, `version: 1`,
+the echoed `request_id`, `lease_seconds: 15`, and `config`. Configuration is
+loaded and validated from `/etc/hro/config.ini` on every request. `config`
+has the same display fields as `/api/config`:
+
+- `station`: observer, location, latitude, longitude
+- `receiver`: receiver, frequency_hz, sdr_gain, fft_center_hz, fft_range_hz,
+  level_peak_range_hz, antenna
+- `screenshot`: prefix
+
+Gain uses tenths of a dB (`496` = 49.6 dB). Coordinates are decimal degrees.
+Configuration responses are limited to 4096 bytes; the terminal must accommodate
+fragmented UDP configuration/FFT datagrams on standard Ethernet/Wi-Fi MTUs.
+
+After sending the ACK, the server forwards existing packets unchanged:
+
+- Port 50000: HRO1 version 1 FFT/Peak/time packet, 2432 bytes, big-endian
+  header and 601 big-endian float32 FFT bins.
+- Port 50002: existing 1024-byte audio packet, 256 native little-endian
+  float32 samples on Pi5, 8192 samples/second.
+
+These are live packets; this UDP interface does not replay past history.
+Audio packets do not contain a sequence number or timestamp. The receiver
+must handle loss and temporary interruption without assuming delivery.
+
+The lease uses the server's monotonic clock. Forwarding stops 15 seconds after
+the last successful registration; a fresh request can register again.
+Existing local engine outputs and browser WebSocket feeds remain active.
+
+Errors use `type: "register_error"`, `version: 1`, an echoed `request_id` when
+available, and `error`: invalid_request, config_unavailable, server_full or
+config_too_large. Empty/oversized requests or requests without a usable ID
+are ignored. No authentication is provided; this protocol is intended for
+the observation station's trusted LAN.

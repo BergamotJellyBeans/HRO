@@ -4,6 +4,7 @@
 
 #include "hro_config.h"
 #include "hro_fft_config.h"
+#include "tab5_udp_server.h"
 
 #include <chrono>
 #include <thread>
@@ -572,7 +573,7 @@ private:
     ConnectionSet clients_;
 };
 
-void runUdpReceiver(LiveWebSocketServer& liveServer)
+void runUdpReceiver(LiveWebSocketServer& liveServer, Tab5UdpServer& terminals)
 {
     const int sock =
         ::socket(AF_INET, SOCK_DGRAM, 0);
@@ -609,7 +610,7 @@ void runUdpReceiver(LiveWebSocketServer& liveServer)
         << "...\n";
 
     std::vector<uint8_t> buffer(
-        HRO_LIVE_PACKET_SIZE);
+        HRO_LIVE_PACKET_SIZE + 1); // Reject oversized datagrams, including truncation.
 
     while (true)
     {
@@ -643,6 +644,7 @@ void runUdpReceiver(LiveWebSocketServer& liveServer)
             continue;
         }
 
+        terminals.forward(buffer.data(), static_cast<std::size_t>(received), false);
         liveServer.postLiveData(
             liveData.sequence,
             liveData.timestamp_ms,
@@ -653,7 +655,7 @@ void runUdpReceiver(LiveWebSocketServer& liveServer)
     ::close(sock);
 }
 
-void runAudioUdpReceiver(AudioWebSocketServer& audioServer)
+void runAudioUdpReceiver(AudioWebSocketServer& audioServer, Tab5UdpServer& terminals)
 {
     constexpr uint16_t HRO_AUDIO_UDP_PORT = 50002;
     constexpr std::size_t AUDIO_PACKET_SIZE =
@@ -694,7 +696,7 @@ void runAudioUdpReceiver(AudioWebSocketServer& audioServer)
         << "...\n";
 
     std::vector<uint8_t> buffer(
-        AUDIO_PACKET_SIZE);
+        AUDIO_PACKET_SIZE + 1);
 
     while (true)
     {
@@ -724,6 +726,7 @@ void runAudioUdpReceiver(AudioWebSocketServer& audioServer)
             continue;
         }
 
+        terminals.forward(buffer.data(), static_cast<std::size_t>(received), true);
         std::vector<uint8_t> audioData(
             buffer.begin(),
             buffer.begin() + received);
@@ -739,6 +742,8 @@ int main()
 {
     LiveWebSocketServer liveServer;
     AudioWebSocketServer audioServer;
+    Tab5UdpServer terminals;
+    if (!terminals.start()) return 1;
 
     std::thread liveThread(
         [&liveServer]()
@@ -747,9 +752,9 @@ int main()
         });
 
     std::thread udpThread(
-        [&liveServer]()
+        [&liveServer, &terminals]()
         {
-            runUdpReceiver(liveServer);
+            runUdpReceiver(liveServer, terminals);
         });
 
     std::thread audioThread(
@@ -759,9 +764,9 @@ int main()
         });
 
     std::thread audioUdpThread(
-        [&audioServer]()
+        [&audioServer, &terminals]()
         {
-            runAudioUdpReceiver(audioServer);
+            runAudioUdpReceiver(audioServer, terminals);
         });
 
     httplib::Server server;
@@ -1362,5 +1367,3 @@ int main()
 
     return 0;
 }
-
-
