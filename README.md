@@ -54,3 +54,16 @@ Raspberry Pi 5
    +-- Tab5 Remote Monitor
    |
    +-- Future AI Analysis
+
+```
+
+## Tab5 target
+
+The ESP-IDF application is under `app/tab5`, with a platform-specific
+256 kS/s frontend in `platform/tab5`. DSP and plot specifications are shared
+with the Pi5 apps in `core`. Tab5 saves PNG images only.
+See [Tab5 build and verification](app/tab5/README.md).
+
+For portable core tests on a development computer, configure the root CMake
+project with `-DHRO_BUILD_RASPBERRYPI=OFF`. Raspberry Pi builds keep the default
+`ON` setting.

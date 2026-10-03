@@ -6,11 +6,11 @@
 namespace hro::dsp {
 
 /**
- * Shift complex IQ by -Fs/4.
+ * Shift complex IQ by +Fs/4.
  *
  * Multiplication sequence:
  *
- *   1, -j, -1, +j, ...
+ *   1, +j, -1, -j, ...
  *
  * No sin/cos calculation is required.
  *

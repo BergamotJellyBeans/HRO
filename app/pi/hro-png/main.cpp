@@ -2,6 +2,7 @@
 
 #include "hro_config.h"
 #include "hro_fft_config.h"
+#include "hro_plot.h"
 #include "hro_version.h"
 
 #include <arpa/inet.h>
@@ -24,8 +25,8 @@
 
 namespace {
 
-constexpr int WIDTH  = 1280;
-constexpr int HEIGHT = 480;
+constexpr int WIDTH  = hro::plot::IMAGE_WIDTH;
+constexpr int HEIGHT = hro::plot::IMAGE_HEIGHT;
 
 constexpr uint16_t HRO_PNG_UDP_PORT = 50001;
 
@@ -35,7 +36,7 @@ constexpr uint16_t HRO_LIVE_VERSION = 1;
 //constexpr std::size_t FFT_BINS = 601;   // 501 -> 601
 constexpr std::size_t FFT_BINS = hro::FFT_BIN_COUNT;
 constexpr std::size_t HRO_LIVE_PACKET_SIZE = 28 + FFT_BINS * sizeof(float);
-constexpr int PNG_SECONDS = 20 * 60; // 1200
+constexpr int PNG_SECONDS = hro::plot::SECONDS; // 1200
 
 struct PngSecond
 {
@@ -57,16 +58,16 @@ using PngBuffer =
 // Plot geometry
 // ------------------------------------------------------------
 
-constexpr int SCROLL_LEFT  = 48;
-constexpr int SCROLL_RIGHT = 1248;
+constexpr int SCROLL_LEFT  = hro::plot::LEFT;
+constexpr int SCROLL_RIGHT = hro::plot::RIGHT;
 
-constexpr int WATERFALL_TOP    = 125;
-constexpr int WATERFALL_BOTTOM = 360;
+constexpr int WATERFALL_TOP    = hro::plot::WATERFALL_TOP;
+constexpr int WATERFALL_BOTTOM = hro::plot::WATERFALL_BOTTOM;
 constexpr int WATERFALL_HEIGHT =
     WATERFALL_BOTTOM - WATERFALL_TOP;
 
-constexpr int LEVEL_TOP    = 370;
-constexpr int LEVEL_H      = 80;
+constexpr int LEVEL_TOP    = hro::plot::LEVEL_TOP;
+constexpr int LEVEL_H      = hro::plot::LEVEL_HEIGHT;
 constexpr int LEVEL_BOTTOM =
     LEVEL_TOP + LEVEL_H;
 
@@ -147,9 +148,7 @@ int64_t getBlockStart(int64_t timestampMs)
     const int64_t seconds =
         timestampMs / 1000;
 
-    return
-        (seconds / PNG_SECONDS) *
-        PNG_SECONDS;
+    return hro::plot::blockStart(seconds);
 }
 
 
@@ -715,81 +714,15 @@ std::string decimalToDms(
 // Same mapping as monitor.html
 // ------------------------------------------------------------
 
-void setWaterfallColor(
-    cairo_t* cr,
-    double db)
+void setWaterfallColor(cairo_t* cr, double db)
 {
-    constexpr double DB_MIN = -20.0;
-    constexpr double DB_MAX =  30.0;
-
-    double t =
-        (db - DB_MIN) /
-        (DB_MAX - DB_MIN);
-
-    t = std::clamp(t, 0.0, 1.0);
-
-    double r = 0.0;
-    double g = 0.0;
-    double b = 0.0;
-
-    // dark blue -> blue -> cyan -> yellow -> white
-    if (t < 0.25)
-    {
-        const double u = t / 0.25;
-
-        b = 30.0 + 180.0 * u;
-    }
-    else if (t < 0.50)
-    {
-        const double u =
-            (t - 0.25) / 0.25;
-
-        g = 220.0 * u;
-        b = 220.0;
-    }
-    else if (t < 0.75)
-    {
-        const double u =
-            (t - 0.50) / 0.25;
-
-        r = 255.0 * u;
-        g = 220.0;
-        b = 220.0 * (1.0 - u);
-    }
-    else
-    {
-        const double u =
-            (t - 0.75) / 0.25;
-
-        r = 255.0;
-        g = 220.0 + 35.0 * u;
-        b = 255.0 * u;
-    }
-
-    cairo_set_source_rgb(
-        cr,
-        r / 255.0,
-        g / 255.0,
-        b / 255.0);
+    const auto color = hro::plot::waterfallColor(db);
+    cairo_set_source_rgb(cr, color.r / 255.0, color.g / 255.0, color.b / 255.0);
 }
-
 
 double levelDbToY(double db)
 {
-    db = std::clamp(
-        db,
-        LEVEL_DB_MIN,
-        LEVEL_DB_MAX);
-
-    const double normalized =
-        (db - LEVEL_DB_MIN) /
-        (LEVEL_DB_MAX - LEVEL_DB_MIN);
-
-    return
-        LEVEL_H - 1 -
-        std::floor(
-            normalized *
-            (LEVEL_H - 1));
+    return hro::plot::levelY(db);
 }
 
 // ------------------------------------------------------------
@@ -828,16 +761,7 @@ void drawWaterfall(
             // fft[0]   = low frequency
             // fft[600] = high frequency
 
-            const double ratio =
-                1.0 -
-                static_cast<double>(y) /
-                (WATERFALL_HEIGHT - 1);
-
-            const std::size_t bin =
-                static_cast<std::size_t>(
-                    std::lround(
-                        ratio *
-                        (FFT_BINS - 1)));
+            const std::size_t bin = hro::plot::binForRow(y);
 
             setWaterfallColor(
                 cr,
@@ -908,7 +832,7 @@ void drawFrequencyAxis(
 
     cairo_set_line_width(cr, 1.0);
 
-    constexpr int TICK_HZ = 100;
+    constexpr int TICK_HZ = hro::plot::FREQUENCY_TICK_HZ;
 
     const int maxFrequency =
         config.fft_center_hz + hro::FFT_RANGE_HZ;
@@ -924,24 +848,15 @@ void drawFrequencyAxis(
          frequency >= minFrequency;
          frequency -= TICK_HZ)
     {
-        const double ratio =
-            static_cast<double>(
-                maxFrequency - frequency) /
-            static_cast<double>(
-                2 * hro::FFT_RANGE_HZ);
-
-        const double y =
-            WATERFALL_TOP +
-            (WATERFALL_BOTTOM -
-             WATERFALL_TOP) * ratio;
+        const double y = hro::plot::frequencyY(frequency, config.fft_center_hz);
 
         // Left tick
-        cairo_move_to(cr, SCROLL_LEFT - 5, y);
-        cairo_line_to(cr, SCROLL_LEFT - 1, y);
+        cairo_move_to(cr, hro::plot::LEFT_TICK_START, y);
+        cairo_line_to(cr, hro::plot::LEFT_TICK_END, y);
 
         // Right tick
-        cairo_move_to(cr, SCROLL_RIGHT + 1, y);
-        cairo_line_to(cr, SCROLL_RIGHT + 5, y);
+        cairo_move_to(cr, hro::plot::RIGHT_TICK_START, y);
+        cairo_line_to(cr, hro::plot::RIGHT_TICK_END, y);
 
         cairo_stroke(cr);
 
@@ -958,7 +873,7 @@ void drawFrequencyAxis(
         drawText(
             cr,
             text,
-            40 - extents.width,
+            hro::plot::AXIS_LABEL_RIGHT - extents.width,
             y + extents.height / 2.0);
     }
 }
@@ -981,8 +896,8 @@ void drawLevelAxis(
             levelDbToY(db);
 
         // Left tick only
-        cairo_move_to(cr, SCROLL_LEFT - 5, y);
-        cairo_line_to(cr, SCROLL_LEFT - 1, y);
+        cairo_move_to(cr, hro::plot::LEFT_TICK_START, y);
+        cairo_line_to(cr, hro::plot::LEFT_TICK_END, y);
         cairo_stroke(cr);
 
         std::ostringstream text;
@@ -1002,7 +917,7 @@ void drawLevelAxis(
         drawText(
             cr,
             text.str(),
-            40 - extents.width,
+            hro::plot::AXIS_LABEL_RIGHT - extents.width,
             y + extents.height / 2.0);
     }
 }
@@ -1024,8 +939,8 @@ void drawTimeAxis(
         const int second =
             minute * 60;
 
-        const double x =
-            SCROLL_LEFT + second;
+        const double x = hro::plot::timeTickX(
+            blockStart + second, blockStart + hro::plot::SECONDS);
 
         // Tick at bottom of Waterfall
         cairo_move_to(
@@ -1268,7 +1183,7 @@ bool writePng(
         cr,
         "GAIN",
         gainText.str(),
-        1050, 24, 43, 12);
+        hro::plot::STATION_GAIN_X, 24, 43, 12);
 
     drawInfo(
         cr,

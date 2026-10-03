@@ -1,3 +1,4 @@
+if(TARGET hro_raspberrypi)
 add_executable(test_observation_file_manager
     test_observation_file_manager.cpp
 )
@@ -21,6 +22,8 @@ target_link_libraries(test_rtl_sdr_source
     PRIVATE
         hro_raspberrypi
 )
+
+endif()
 
 add_executable(test_fs4_rotator
     test_fs4_rotator.cpp
@@ -128,3 +131,23 @@ add_test(
     NAME hro_config
     COMMAND test_hro_config
 )
+
+# Platform-free checks for the shared plot specification and Tab5 RF frontend.
+add_executable(test_hro_plot test_hro_plot.cpp)
+target_link_libraries(test_hro_plot PRIVATE hro_core)
+add_test(NAME hro_plot COMMAND test_hro_plot)
+
+add_executable(test_tab5_frontend test_tab5_frontend.cpp
+    ../platform/tab5/tab5_frontend.cpp)
+target_include_directories(test_tab5_frontend PRIVATE ../platform/tab5/include)
+target_link_libraries(test_tab5_frontend PRIVATE hro_core)
+add_test(NAME tab5_frontend COMMAND test_tab5_frontend)
+
+# Tab5 application rules can be checked on a Mac without hardware or ESP-IDF.
+add_executable(test_tab5_app_helpers test_tab5_app_helpers.cpp
+    ../app/tab5/main/tab5_helpers.cpp
+    ../app/tab5/main/tab5_config_validation.cpp)
+target_include_directories(test_tab5_app_helpers PRIVATE
+    ../app/tab5/main ../platform/tab5/include)
+target_link_libraries(test_tab5_app_helpers PRIVATE hro_core)
+add_test(NAME tab5_app_helpers COMMAND test_tab5_app_helpers)

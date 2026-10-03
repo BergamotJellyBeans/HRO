@@ -20,6 +20,9 @@ public:
 
     void reset();
 
+    // Allocation-free streaming API for embedded callers.
+    bool processOne(std::complex<float> input, std::complex<float>& output);
+
     void process(
         const std::complex<float>* input,
         std::size_t count,

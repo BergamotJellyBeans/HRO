@@ -12,6 +12,8 @@ public:
     // w[n] = 0.5 - 0.5*cos(2*pi*n/N)
     //
     // Intended for FFT analysis.
+    static float coefficient(std::size_t index, std::size_t count);
+
     static void apply(std::complex<float>* samples, std::size_t count);
 };
 

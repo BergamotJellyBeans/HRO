@@ -30,6 +30,21 @@ double estimateFrequency(const std::vector<std::complex<float>>& x,
 
 int main()
 {
+    // Float oscillator: sustained operation, phase continuity and amplitude stability.
+    for (float shift : {780.0f, -780.0f, 657.0f, 0.0f}) {
+        std::vector<std::complex<float>> signal(64000 * 10, {1.0f, 0.0f});
+        hro::dsp::FloatNcoShifter fast(64000.0f);
+        fast.setFrequencyShift(shift);
+        for (std::size_t offset = 0; offset < signal.size(); offset += 137) {
+            fast.process(signal.data() + offset, std::min<std::size_t>(137, signal.size() - offset));
+        }
+        assert(std::abs(estimateFrequency(signal, 64000.0) - shift) < 0.01);
+        for (const auto sample : signal) assert(std::abs(std::abs(sample) - 1.0f) < 0.001f);
+        fast.reset();
+        std::complex<float> first{1.0f, 0.0f}; fast.process(&first, 1);
+        assert(first == std::complex<float>(1.0f, 0.0f));
+    }
+
     constexpr double sample_rate = 64000.0;
     constexpr double shift_hz = 780.0;
     constexpr std::size_t sample_count = 64000;

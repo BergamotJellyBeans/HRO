@@ -7,6 +7,7 @@
 #include "dsp/nco_shifter.h"
 #include "dsp/resampler_16_125.h"
 #include "dsp/hann_window.h"
+#include "dsp/spectrum_math.h"
 #include "dsp/complex_fft.h"
 
 #include <cstdint>
@@ -376,10 +377,10 @@ int main()
         for (std::size_t i = 0; i < sampleCount; ++i)
         {
             const float I =
-                (static_cast<float>(rawBuffer[i * 2]) - 127.5f) / 127.5f;
+                hro::dsp::normalizeCu8(rawBuffer[i * 2]);
 
             const float Q =
-                (static_cast<float>(rawBuffer[i * 2 + 1]) - 127.5f) / 127.5f;
+                hro::dsp::normalizeCu8(rawBuffer[i * 2 + 1]);
 
             iqBuffer[i] = std::complex<float>(I, Q);
         }
@@ -541,9 +542,7 @@ int main()
                         std::norm(value);
 
                     const float db =
-                        10.0f * std::log10(
-                            power + 1.0e-20f
-                        );
+                        hro::dsp::powerDb(power);
 
                     displayDb.push_back(db);
                 }
