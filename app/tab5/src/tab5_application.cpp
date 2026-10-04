@@ -1,3 +1,4 @@
+#include "tab5_field.hpp"
 #include "tab5_console.hpp"
 #include "tab5_runtime.hpp"
 #include "tab5_application.hpp"
@@ -64,6 +65,7 @@ void start()
     auto m5cfg = M5.config();
     M5.begin( m5cfg );
     console_init();
+    field_init();
     console_message("Application started");
 
     auto speaker_cfg = M5.Speaker.config();

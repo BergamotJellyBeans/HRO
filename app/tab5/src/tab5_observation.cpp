@@ -1,3 +1,4 @@
+#include "tab5_field.hpp"
 #include "tab5_runtime.hpp"
 #include "tab5_observation.hpp"
 #include "tab5_audio.hpp"
@@ -48,6 +49,7 @@ void hro_display_task( void *arg )
         }
 
         poll_terminal_display();
+        poll_phone_field();
         console_tick();
         const uint32_t sequence = g_hro_spectrum_sequence.load( std::memory_order_acquire );
 

@@ -1,3 +1,4 @@
+#include "tab5_field.hpp"
 #include "tab5_console.hpp"
 #include "tab5_runtime.hpp"
 #include "tab5_time.hpp"
@@ -9,6 +10,7 @@ static void time_sync_notification_cb( struct timeval *tv );
 
 static void time_sync_notification_cb( struct timeval *tv )
 {
+    clear_phone_clock_source();
     ESP_LOGI( TAG, "NTP time synchronized" );
     console_message("NTP time synchronized");
 

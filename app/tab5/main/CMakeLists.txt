@@ -9,6 +9,8 @@ idf_component_register(
         "../src/tab5_display.cpp"
         "../src/tab5_controls.cpp"
         "../src/tab5_console.cpp"
+        "../src/tab5_field.cpp"
+        "../src/tab5_field_data.cpp"
         "../src/tab5_observation.cpp"
         "../src/tab5_audio.cpp"
         "../src/tab5_time.cpp"

@@ -1,3 +1,4 @@
+#include "tab5_field.hpp"
 #include "tab5_runtime.hpp"
 #include "tab5_display.hpp"
 #include "tab5_helpers.hpp"
@@ -247,6 +248,9 @@ void draw_current_time(time_t observation_time)
     if (observation_time) {
         strftime(buf, sizeof(buf), "%Y/%m/%d  %H:%M:%S [Pi5]", &timeinfo);
         bg_color = M5.Display.color565(0, 60, 120);
+    } else if (phone_clock_active()) {
+        strftime(buf, sizeof(buf), "%Y/%m/%d  %H:%M:%S [PHONE]", &timeinfo);
+        bg_color = M5.Display.color565(0, 60, 120);
     } else if ( ntp_synced ) {
         strftime( buf, sizeof( buf ), "%Y/%m/%d  %H:%M:%S [NTP]", &timeinfo );
         bg_color = M5.Display.color565( 0, 60, 120 );
@@ -347,8 +351,8 @@ void draw_station_info( void )
     // Decimal degrees -> DMS
     // --------------------------------------------------
 
-    DmsValue lon = longitude_to_dms( g_hro_config.longitude );
-    DmsValue lat = latitude_to_dms( g_hro_config.latitude );
+    DmsValue lon = longitude_to_dms(observation_longitude(g_hro_config.longitude));
+    DmsValue lat = latitude_to_dms(observation_latitude(g_hro_config.latitude));
 
     char line1[128];
     char line2[128];
@@ -390,6 +394,9 @@ void draw_station_info( void )
              lat.minutes,
              lat.seconds);
 
+    // Clear both coordinate rows before replacing temporary field coordinates.
+    // Keep the vertical separators at X=773 and X=893 intact.
+    M5.Display.fillRect( 775, 20, 116, 49, BLACK );
     M5.Display.setTextColor( WHITE );
     M5.Display.drawString( line1, 780, 31 );
     M5.Display.drawString( line2, 780, 58 );

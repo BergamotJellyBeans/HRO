@@ -1,3 +1,4 @@
+#include "tab5_field.hpp"
 #include "tab5_console.hpp"
 #include "tab5_runtime.hpp"
 #include "tab5_wifi.hpp"
@@ -397,6 +398,8 @@ static httpd_handle_t start_wifi_setup_webserver( void )
         return nullptr;
     }
 
+    err = register_field_handlers(server);
+    if (err != ESP_OK) { httpd_stop(server); return nullptr; }
     ESP_LOGI( TAG, "Wi-Fi setup web server started" );
     return server;
 }
