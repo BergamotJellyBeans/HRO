@@ -63,6 +63,9 @@ bool validate_hro_config( const Tab5Config &cfg, char *error_msg, size_t error_m
                 return set_error("Invalid Pi5 IPv4 address");
     }
 
+    if (cfg.display_level_db < -30 || cfg.display_level_db > 30)
+        return set_error("Display Level must be between -30 and +30 dB");
+
     // Station position
     if ( cfg.latitude < -90.0 || cfg.latitude > 90.0 ) {
         return set_error( "Latitude must be between -90 and +90 degrees" );

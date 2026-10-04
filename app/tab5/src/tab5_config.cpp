@@ -41,6 +41,7 @@ Tab5Config g_hro_config = {
 
     .pi5_address = "",
     .source_system_info = "",
+    .display_level_db = 0,
     .audio_volume = 20,
     .audio_mute   = false,
 
@@ -138,6 +139,7 @@ bool write_hro_config_file( const char *filename, const Tab5Config &cfg )
     fprintf( fp, "\n" );
 
     fprintf( fp, "[pi5]\naddress=%s\n\n", cfg.pi5_address );
+    fprintf(fp, "[display]\nlevel_db=%d\n\n", cfg.display_level_db);
     fprintf( fp, "[audio]\n" );
     fprintf( fp, "volume=%d\n", cfg.audio_volume );
     fprintf( fp, "mute=%d\n", cfg.audio_mute ? 1 : 0 );
@@ -251,6 +253,9 @@ bool load_hro_config( void )
             if ( strcmp( key, "address" ) == 0 ) {
                 snprintf(g_hro_config.pi5_address, sizeof(g_hro_config.pi5_address), "%.15s", value);
             }
+        } else if (strcmp(section, "display") == 0) {
+            if (strcmp(key, "level_db") == 0)
+                g_hro_config.display_level_db = atoi(value);
         } else if ( strcmp( section, "audio" ) == 0 ) {
             if ( strcmp( key, "volume" ) == 0 ) {
                 g_hro_config.audio_volume = atoi( value );

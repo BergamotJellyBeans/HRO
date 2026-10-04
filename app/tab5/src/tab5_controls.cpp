@@ -1,7 +1,9 @@
+#include "tab5_console.hpp"
 #include "tab5_runtime.hpp"
 #include "tab5_controls.hpp"
 #include "tab5_audio.hpp"
 #include "tab5_helpers.hpp"
+#include "tab5_display.hpp"
 
 namespace hro::tab5::app {
 static bool g_shutdown_holding = false;
@@ -28,21 +30,25 @@ void draw_shutdown_button( bool safe )
 
 void draw_audio_controls( void )
 {
-    constexpr int PANEL_X = 1015;
-    constexpr int PANEL_Y = 520;
-    constexpr int PANEL_W = 250;
-
-    constexpr int BTN_Y = 557;
-    constexpr int BTN_W = 62;
-    constexpr int BTN_H = 38;
-
-    constexpr int MINUS_X = 1025;
-    constexpr int PLUS_X  = 1193;
-
-    constexpr int MUTE_X = 1080;
-    constexpr int MUTE_Y = 605;
-    constexpr int MUTE_W = 120;
-    constexpr int MUTE_H = 34;
+    constexpr int PANEL_X = 1015, PANEL_Y = 520, PANEL_W = 250;
+    constexpr int BTN_Y = AUDIO_VOL_MINUS_Y, BTN_W = 62, BTN_H = 38;
+    constexpr int MINUS_X = AUDIO_VOL_MINUS_X, PLUS_X = AUDIO_VOL_PLUS_X;
+    constexpr int MUTE_X = AUDIO_MUTE_X, MUTE_Y = AUDIO_MUTE_Y;
+    constexpr int MUTE_W = AUDIO_MUTE_W, MUTE_H = AUDIO_MUTE_H;
+    M5.Display.fillRect(PANEL_X, PANEL_Y, PANEL_W, 161, BLACK);
+    M5.Display.drawRect(PANEL_X, PANEL_Y, PANEL_W, 161, WHITE);
+    M5.Display.setFont(&fonts::Font2);
+    M5.Display.setTextDatum(middle_center);
+    M5.Display.setTextColor(WHITE);
+    M5.Display.drawString("DISPLAY LEVEL", 1140, 533);
+    M5.Display.drawRect(1025, 546, 78, 32, WHITE);
+    M5.Display.drawRect(1177, 546, 78, 32, WHITE);
+    M5.Display.drawString("LEVEL-", 1064, 562);
+    M5.Display.drawString("LEVEL+", 1216, 562);
+    char level[16];
+    snprintf(level, sizeof(level), "%+d dB", g_display_level_db.load(std::memory_order_relaxed));
+    M5.Display.setTextColor(CYAN);
+    M5.Display.drawString(level, 1140, 562);
 
     const int volume = g_audio_volume.load( std::memory_order_relaxed );
     const bool mute = g_audio_mute.load( std::memory_order_relaxed );
@@ -52,7 +58,7 @@ void draw_audio_controls( void )
     M5.Display.setTextDatum( middle_center );
     M5.Display.setTextColor( WHITE );
 
-    M5.Display.drawString( "AUDIO", PANEL_X + PANEL_W / 2, PANEL_Y + 15 );
+    M5.Display.drawString( "AUDIO", PANEL_X + PANEL_W / 2, 594 );
 
     // VOL -
     M5.Display.drawRect( MINUS_X, BTN_Y, BTN_W, BTN_H, WHITE );
@@ -130,6 +136,7 @@ void handle_audio_touch()
             play_touch_beep();
 
             ESP_LOGI( TAG, "SHUTDOWN requested" );
+            console_message("Shutdown started");
             g_hro_shutdown_requested.store( true, std::memory_order_release );
             return;
         }
@@ -141,6 +148,19 @@ void handle_audio_touch()
     // AUDIO : 従来通り、押した瞬間だけ処理
     // ---------------------------------------------------------
     if ( !detail.wasPressed() ) {
+        return;
+    }
+
+    if (point_in_rect(x, y, 1025, 546, 78, 32) ||
+        point_in_rect(x, y, 1177, 546, 78, 32)) {
+        const int old = g_display_level_db.load(std::memory_order_relaxed);
+        const int level = std::clamp(old + (x < 1140 ? -1 : 1), -30, 30);
+        if (level != old) {
+            g_display_level_db.store(level, std::memory_order_relaxed);
+            audio_config_changed();
+        }
+        play_touch_beep();
+        draw_audio_controls();
         return;
     }
 

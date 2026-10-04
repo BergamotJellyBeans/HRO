@@ -1,3 +1,4 @@
+#include "tab5_console.hpp"
 #include "tab5_runtime.hpp"
 #include "tab5_wifi.hpp"
 #include "tab5_helpers.hpp"
@@ -51,6 +52,8 @@ static void wifi_event_handler( void *arg, esp_event_base_t event_base, int32_t 
         g_sta_ready.store(false, std::memory_order_release);
         auto *event = static_cast<wifi_event_sta_disconnected_t *>( event_data );
         ESP_LOGW( TAG, "Wi-Fi STA disconnected, reason=%d", event->reason );
+        console_printf(ConsoleLevel::Warning, "Wi-Fi disconnected (reason=%d); %s", event->reason,
+                       g_wifi_setup_mode ? "setup mode active" : "reconnecting");
         if ( !g_wifi_setup_mode ) {
             ESP_LOGI( TAG, "Reconnecting Wi-Fi STA..." );
             esp_err_t err = esp_wifi_connect();
@@ -64,6 +67,7 @@ static void wifi_event_handler( void *arg, esp_event_base_t event_base, int32_t 
         auto *event = static_cast<ip_event_got_ip_t *>( event_data );
         ESP_LOGI( TAG, "Wi-Fi STA got IP: " IPSTR, IP2STR( &event->ip_info.ip ) );
         g_sta_ready.store(true, std::memory_order_release);
+        console_printf(ConsoleLevel::Info, "Wi-Fi connected: " IPSTR, IP2STR(&event->ip_info.ip));
         start_ntp();	// NTPサーバから日付時刻取得
     }
 }
@@ -441,6 +445,7 @@ void wifi_start_ap( const char *saved_ssid, const char *saved_password )
     ESP_ERROR_CHECK( esp_wifi_set_config( WIFI_IF_AP, &wifi_config ) );
     ESP_ERROR_CHECK( esp_wifi_start() );
     ESP_LOGI( TAG, "Wi-Fi SoftAP started: SSID=%s", ssid );
+    console_printf(ConsoleLevel::Info, "Wi-Fi setup AP: %s", ssid);
 
     if (saved_ssid[0] != '\0') {
         wifi_connect_sta( saved_ssid, saved_password );

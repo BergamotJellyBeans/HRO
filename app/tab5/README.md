@@ -146,6 +146,21 @@ ctest --test-dir build-host --output-on-failure
 SDアクセス、描画、Wi-Fi、音声と受信の実動作は実機で確認してください。
 ソース構成を変更したので、ESP-IDF側は最初に `idf.py reconfigure build` を実行します。
 
+## コンソール表示
+
+LCDの下部 `(10, 480)`、幅1000・高さ195にFont2で英語メッセージを9行表示します。
+新しいメッセージを下に追加し、満杯になると上へスクロールします。
+通常は水色、警告は黄色、エラーは赤です。同一メッセージの連続は回数をまとめます。
+時刻が有効ならJSTの時分秒、それ以前は起動後の秒数を表示します。
+
+起動・モード、Wi-Fi、SDR、Pi5登録、設定受信、観測・音声の受信開始／中断／復帰、
+PNG保存、RTC/NTP、終了処理を記録します。正常な5秒ごとの登録更新やFFTごとの
+処理ログはコンソールに出しません。シリアルの診断ログは従来どおり使えます。
+
+`tab5_console` が各タスクからのメッセージを非ブロッキングのキューに集めます。
+表示タスクだけがまとめてLCDへ描画し、通常の更新間隔は最短100msです。
+領域はPNG保存範囲の外です。確認用デモは削除しています。
+
 ## 電源OFF
 
 画面の `HOLD 2 SEC TO SHUTDOWN` を2秒長押しすると、PNG保存を停止し、
@@ -192,3 +207,16 @@ SDとRTCのアクセスは `platform/tab5` に分離しています。
 機器層はアプリの内部ヘッダーやグローバル設定を参照しません。
 配置変更後は `idf.py reconfigure build` を実行し、RTC復元・NTP同期・
 SD読込・PNG保存・安全終了を実機で確認してください。
+
+### Local Display Level
+
+The right-hand control panel provides `LEVEL-`, a signed dB value, and `LEVEL+`
+above the audio controls. Each press changes waterfall brightness by 1 dB
+within -30 to +30 dB; 0 dB preserves the original colour mapping. Only newly arriving waterfall columns use the adjusted level; existing columns
+retain their original colours, preserving the visible history of adjustments.
+The Peak graph, DSP, audio and incoming Pi5 packets remain unchanged.
+
+Both modes save this local preference as `[display] level_db` in the Tab5
+`config.ini`, together with volume/mute after two seconds without changes.
+Shutdown flushes pending changes. Older configuration files default to 0 dB.
+Standalone PNG files capture the adjusted waterfall colours.

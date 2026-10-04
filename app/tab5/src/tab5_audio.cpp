@@ -1,5 +1,7 @@
 #include "tab5_runtime.hpp"
 #include "tab5_audio.hpp"
+#include "tab5_console.hpp"
+#include "tab5_terminal.hpp"
 
 namespace hro::tab5::app {
 static AudioBlock g_audio_play_buffer[AUDIO_BUFFER_COUNT];
@@ -32,12 +34,13 @@ void save_audio_config_if_needed( void )
     }
 
     // 現在のAudio設定をHRO設定へ反映
+    stored_hro_config().display_level_db = g_display_level_db.load(std::memory_order_relaxed);
     stored_hro_config().audio_volume = g_audio_volume.load( std::memory_order_relaxed );
     stored_hro_config().audio_mute = g_audio_mute.load( std::memory_order_relaxed );
 
     if ( save_hro_config() ) {
         g_audio_config_dirty.store( false, std::memory_order_relaxed );
-        ESP_LOGI( TAG, "Audio config saved: volume=%d mute=%d", stored_hro_config().audio_volume, stored_hro_config().audio_mute ? 1 : 0 );
+        ESP_LOGI( TAG, "Local controls saved: volume=%d mute=%d display_level=%d dB", stored_hro_config().audio_volume, stored_hro_config().audio_mute ? 1 : 0, stored_hro_config().display_level_db );
     }
 }
 
@@ -47,12 +50,35 @@ void hro_audio_task( void *arg )
 
     int play_index = 0;
     uint32_t block_count = 0;
+    bool playback_started = false;
+    int64_t last_feed_us = 0, max_feed_gap_us = 0, last_timing_log_us = 0;
+    const unsigned prebuffer_blocks = terminal_mode() ? 10 : 4;
+    bool buffered = false;
+    unsigned rebuffer_count = 0;
 
     for ( ;; ) {
         AudioBlock incoming;
-        if ( xQueueReceive( g_audio_queue, &incoming, pdMS_TO_TICKS(20) ) != pdTRUE ) {
+        if (!buffered && uxQueueMessagesWaiting(g_audio_queue) >= prebuffer_blocks) {
+            buffered = true;
+            last_feed_us = 0; // Buffering delay is reported separately.
+        }
+        if (!buffered) {
+            // Confirmation/touch sounds remain available while accumulating PCM.
+            if (g_touch_beep_samples.load(std::memory_order_relaxed) <= 0) {
+                // With 100 Hz ticks, pdMS_TO_TICKS(5) is zero and busy-spins.
+                vTaskDelay(1);
+                continue;
+            }
+            memset(&incoming, 0, sizeof(incoming));
+        } else if ( xQueueReceive( g_audio_queue, &incoming, pdMS_TO_TICKS(20) ) != pdTRUE ) {
+            buffered = false;
+            ++rebuffer_count;
+            console_message("Audio buffering: waiting for data", ConsoleLevel::Warning);
             if (g_touch_beep_samples.load(std::memory_order_relaxed) <= 0) continue;
             memset(&incoming, 0, sizeof(incoming));
+        } else if (!playback_started) {
+            playback_started = true;
+            console_message("Audio playback started");
         }
 
         block_count++;
@@ -114,12 +140,25 @@ void hro_audio_task( void *arg )
         if ( !ok ) {
             ESP_LOGW( TAG, "Speaker playRaw queue full" );
         }
+        const int64_t feed_us = esp_timer_get_time();
+        if (last_feed_us && feed_us - last_feed_us > max_feed_gap_us)
+            max_feed_gap_us = feed_us - last_feed_us;
+        last_feed_us = feed_us;
+        if (feed_us - last_timing_log_us >= 10000000) {
+            ESP_LOGI(TAG, "AUDIO timing: max_feed_gap=%lld us queue=%u rebuffers=%u",
+                     static_cast<long long>(max_feed_gap_us),
+                     static_cast<unsigned>(uxQueueMessagesWaiting(g_audio_queue)), rebuffer_count);
+            max_feed_gap_us = 0;
+            last_timing_log_us = feed_us;
+        }
 
         play_index++;
 
         if ( play_index >= AUDIO_BUFFER_COUNT ) {
             play_index = 0;
         }
+        // Even a full queue / immediate Speaker acceptance must leave idle time.
+        vTaskDelay(1);
     }
 }
 

@@ -13,7 +13,8 @@ void stop_png_storage()
         return;
     }
     if (g_audio_config_dirty.load(std::memory_order_relaxed)) {
-        stored_hro_config().audio_volume = g_audio_volume.load(std::memory_order_relaxed);
+        stored_hro_config().display_level_db = g_display_level_db.load(std::memory_order_relaxed);
+    stored_hro_config().audio_volume = g_audio_volume.load(std::memory_order_relaxed);
         stored_hro_config().audio_mute = g_audio_mute.load(std::memory_order_relaxed);
         if (!save_hro_config()) {
             ESP_LOGE(TAG, "Pending audio config could not be saved; SD remains mounted");

@@ -1,3 +1,4 @@
+#include "tab5_console.hpp"
 #include "tab5_runtime.hpp"
 #include "tab5_application.hpp"
 #include "tab5_audio.hpp"
@@ -38,7 +39,7 @@ static void start_display_and_audio()
         "hro_audio",
         4096,
         nullptr,
-        3,
+        5, // Keep PCM feeding ahead of FFT (4) and LCD (2).
         nullptr,
         0
     );
@@ -62,7 +63,13 @@ void start()
 
     auto m5cfg = M5.config();
     M5.begin( m5cfg );
+    console_init();
+    console_message("Application started");
 
+    auto speaker_cfg = M5.Speaker.config();
+    speaker_cfg.task_priority = 6;
+    speaker_cfg.task_pinned_core = 0;
+    M5.Speaker.config(speaker_cfg);
     M5.Speaker.begin();
     M5.Speaker.setVolume( 128 );
 
@@ -118,13 +125,17 @@ void start()
         list_sdcard_root();
         load_base_screen();
         ensure_hro_config();
+        console_message("SD card mounted; configuration loaded");
         draw_station_info();
         draw_waterfall_frequency_axis();
         draw_shutdown_button( false );
     }
 
 
+    if (!device::sdcard_mounted()) console_message("SD card mount failed", ConsoleLevel::Error);
+
     // Audio設定を実際のAudio制御へ反映
+    g_display_level_db.store(g_hro_config.display_level_db, std::memory_order_relaxed);
     g_audio_volume.store( g_hro_config.audio_volume, std::memory_order_relaxed );
     g_audio_mute.store( g_hro_config.audio_mute, std::memory_order_relaxed );
     draw_audio_controls();
@@ -152,7 +163,7 @@ void start()
     // --------------------------------------------------------
     // Audio queues
     // --------------------------------------------------------
-    g_audio_queue = xQueueCreate( 4, sizeof( AudioBlock ) );
+    g_audio_queue = xQueueCreate(AUDIO_QUEUE_BLOCKS, sizeof(AudioBlock));
     if ( g_audio_queue == nullptr ) {
         ESP_LOGE( TAG, "Failed to create audio queue" );
         return;
@@ -195,11 +206,13 @@ void start()
     ESP_LOGI( TAG, "esp_rtl_sdr installed v%s", esp_rtl_sdr_get_version_string() );
 
     ESP_LOGI(TAG, "Checking startup SDR connection (up to 8 seconds)...");
+    console_message("Checking startup SDR connection");
     const int64_t detect_deadline = esp_timer_get_time() + 8000000;
     while (!rtl_recognized() && esp_timer_get_time() < detect_deadline)
         vTaskDelay(pdMS_TO_TICKS(50));
     if (!rtl_recognized()) {
         ESP_LOGI(TAG, "MODE: terminal (no startup SDR)");
+        console_message("Terminal mode started");
         if (!start_terminal_mode()) {
             ESP_LOGE(TAG, "Failed to start Pi5 terminal");
             return;
@@ -208,6 +221,7 @@ void start()
         return;
     }
     ESP_LOGI(TAG, "MODE: standalone SDR observation");
+    console_message("Standalone mode started");
 
     // --------------------------------------------------------
     // IQ ring buffer / queues
@@ -349,6 +363,8 @@ void start()
     }
 
     start_display_and_audio();
+    // Confirm standalone startup after recognizing the attached SDR.
+    play_touch_beep();
 }
 
 } // namespace hro::tab5::app

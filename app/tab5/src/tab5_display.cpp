@@ -129,12 +129,14 @@ void draw_waterfall_column( const float *spectrum )
         return;
     }
 
+    const int level = g_display_level_db.load(std::memory_order_relaxed);
     // Pi5と同じ1200秒 = 1200px。各秒を必ず1列描画する。
     g_waterfall.scroll( -1, 0 );
     for ( int y = 0; y < WF_H; ++y ) {
         // Pi5のlroundと同じ最近傍binへ丸める。
         const int bin = hro::plot::binForRow(y);
-        const uint16_t color = waterfall_color( spectrum[bin] );
+        const float db = spectrum[bin];
+        const uint16_t color = waterfall_color(db + level);
         g_waterfall.fillRect( WF_W - 1, y, 1, 1, color );
     }
     g_waterfall.pushSprite( WF_X, WF_Y );

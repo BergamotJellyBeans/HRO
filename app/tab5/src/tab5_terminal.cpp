@@ -3,6 +3,8 @@
 #include "tab5_terminal_config.hpp"
 #include "tab5_wifi.hpp"
 #include "tab5_display.hpp"
+#include "tab5_audio.hpp"
+#include "tab5_console.hpp"
 #include "tab5_helpers.hpp"
 #include "hro_live_packet.h"
 #include "lwip/sockets.h"
@@ -18,6 +20,7 @@ bool g_terminal = false; // Fixed before starting display/audio tasks.
 QueueHandle_t g_remote_frames = nullptr;
 QueueHandle_t g_remote_config = nullptr;
 std::atomic<int> g_status{0};
+std::atomic<bool> g_audio_receiving{false};
 time_t g_remote_time = 0;
 float g_remote_peaks[HRO_HISTORY_SECONDS]{};
 
@@ -75,6 +78,8 @@ void terminal_receive_task(void*)
     int64_t lease_until = 0;
     int64_t last_frame_ms = 0;
     int64_t last_data_us = 0;
+    int64_t last_audio_us = 0;
+    unsigned unanswered_requests = 0;
     bool was_connected = false;
     uint32_t fft_packets = 0, audio_packets = 0, audio_drops = 0;
     int64_t last_log_us = 0;
@@ -83,6 +88,7 @@ void terminal_receive_task(void*)
         const int64_t now = esp_timer_get_time();
         if (g_hro_shutdown_requested.load(std::memory_order_acquire)) break;
         if (!wifi_sta_ready()) {
+            g_audio_receiving.store(false);
             lease_until = 0;
             next_request = 0;
             g_status.store(2);
@@ -98,11 +104,19 @@ void terminal_receive_task(void*)
                 static_cast<unsigned long>(request_id));
             sendto(control, request, len, MSG_DONTWAIT, reinterpret_cast<sockaddr*>(&server), sizeof(server));
             next_request = now + 5000000;
+            if (lease_until <= now) {
+                if (++unanswered_requests == 1)
+                    console_printf(ConsoleLevel::Info, "Connecting to Pi5: %s", local.pi5_address);
+                if (unanswered_requests == 3)
+                    console_message("Pi5 not responding; retrying every 5 seconds", ConsoleLevel::Warning);
+            }
             if (lease_until <= now) ESP_LOGI(TAG, "Pi5 registration request %lu", static_cast<unsigned long>(request_id));
         }
         const bool connected = lease_until > now;
+        g_audio_receiving.store(connected && last_audio_us && now - last_audio_us < 3000000);
         if (!connected && was_connected) {
             ESP_LOGW(TAG, "Pi5 registration expired; retrying");
+            console_message("Pi5 registration expired; reconnecting", ConsoleLevel::Warning);
             last_frame_ms = 0;
         }
         was_connected = connected;
@@ -131,11 +145,17 @@ void terminal_receive_task(void*)
                 Tab5Config config{};
                 if (!decode_terminal_config(reinterpret_cast<char*>(buffer), received, request_id, local, config)) {
                     ESP_LOGW(TAG, "Pi5 registration response rejected");
+                    console_message("Pi5 response rejected: check server/settings", ConsoleLevel::Warning);
                     continue;
                 }
                 xQueueOverwrite(g_remote_config, &config);
                 lease_until = esp_timer_get_time() + 15000000;
-                if (!connected) ESP_LOGI(TAG, "Pi5 registered; configuration received");
+                unanswered_requests = 0;
+                if (!connected) {
+                    ESP_LOGI(TAG, "Pi5 registered; configuration received");
+                    console_message("Pi5 registration accepted");
+                    play_touch_beep();
+                }
             } else if (lease_until > esp_timer_get_time() && sock == data) {
                 if (!hro::live::decodeFrame(buffer, received, frame) || frame.timestamp_ms <= last_frame_ms)
                     continue;
@@ -147,6 +167,7 @@ void terminal_receive_task(void*)
             } else if (lease_until > esp_timer_get_time() && sock == audio) {
                 AudioBlock block{};
                 if (hro::live::decodeAudio(buffer, received, block.samples)) {
+                    last_audio_us = esp_timer_get_time();
                     ++audio_packets;
                     if (xQueueSend(g_audio_queue, &block, 0) != pdTRUE) ++audio_drops;
                 }
@@ -180,31 +201,49 @@ float terminal_history_peak(unsigned index)
 void poll_terminal_display()
 {
     if (!g_terminal) return;
+    static bool audio_active = false, audio_seen = false;
+    const bool audio_now = g_audio_receiving.load();
+    if (audio_now != audio_active) {
+        console_message(audio_now ? (audio_seen ? "Audio receiving resumed" : "Audio receiving")
+                                  : "Audio interrupted", audio_now ? ConsoleLevel::Info : ConsoleLevel::Warning);
+        audio_active = audio_now;
+        if (audio_now) audio_seen = true;
+    }
     static int previous_status = -1;
     const int status = g_status.load();
     if (status != previous_status) {
         if (previous_status == -1) draw_system_info();
+        const int old_status = previous_status;
         previous_status = status;
+        static bool data_seen = false;
         const char* text = status == 1 ? "Pi5: set IP address at /station and restart" :
                            status == 2 ? "Pi5: waiting for Wi-Fi" :
-                           status == 4 ? "Pi5: receiving observation data" :
+                           status == 4 ? (data_seen ? "Observation data resumed" : "Observation data receiving") :
                            status == 5 ? "Pi5: UDP initialization failed" :
-                           status == 6 ? "Pi5: registered, waiting for observation data" :
+                           status == 6 ? (old_status == 4 ? "Observation data interrupted" : "Pi5: waiting for observation data") :
                                          "Pi5: connecting...";
-        M5.Display.fillRect(10, 653, 950, 24, BLACK);
-        M5.Display.setFont(&fonts::Font2);
-        M5.Display.setTextDatum(top_left);
-        M5.Display.setTextColor(CYAN);
-        M5.Display.drawString(text, 10, 653);
+        console_message(text, status == 5 ? ConsoleLevel::Error :
+            status == 1 || (status == 6 && old_status == 4) ? ConsoleLevel::Warning : ConsoleLevel::Info);
+        if (status == 4) data_seen = true;
     }
     Tab5Config config{};
-    if (xQueueReceive(g_remote_config, &config, 0) == pdTRUE &&
-        memcmp(&config, &g_hro_config, sizeof(config)) != 0) {
+    const bool have_config = xQueueReceive(g_remote_config, &config, 0) == pdTRUE;
+    if (have_config) {
+        config.display_level_db = g_hro_config.display_level_db;
+        config.audio_volume = g_hro_config.audio_volume;
+        config.audio_mute = g_hro_config.audio_mute;
+    }
+    if (have_config && memcmp(&config, &g_hro_config, sizeof(config)) != 0) {
         const bool tuning_changed = config.fft_center_hz != g_hro_config.fft_center_hz ||
             config.frequency_hz != g_hro_config.frequency_hz ||
             config.sdr_gain != g_hro_config.sdr_gain ||
             config.level_average_range_hz != g_hro_config.level_average_range_hz;
+        config.display_level_db = g_display_level_db.load(std::memory_order_relaxed);
+        config.audio_volume = g_audio_volume.load(std::memory_order_relaxed);
+        config.audio_mute = g_audio_mute.load(std::memory_order_relaxed);
         g_hro_config = config; // Only the display task applies remote config.
+        console_printf(ConsoleLevel::Info, "Pi5 settings received: RF=%.6f MHz, Gain=%.1f dB",
+                       config.frequency_hz / 1000000.0, config.sdr_gain / 10.0);
         if (tuning_changed) {
             g_hro_history_count = g_hro_history_write_pos = 0;
             g_waterfall.fillSprite(BLACK);

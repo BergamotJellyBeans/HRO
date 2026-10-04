@@ -7,6 +7,7 @@
 #include "tab5_png.hpp"
 #include "tab5_storage.hpp"
 #include "tab5_terminal.hpp"
+#include "tab5_console.hpp"
 
 namespace hro::tab5::app {
 static time_t g_screenshot_block_start = 0;
@@ -24,11 +25,14 @@ void hro_display_task( void *arg )
         M5.update();
         handle_audio_touch(); // タッチパネル操作
         if (g_hro_shutdown_requested.load(std::memory_order_acquire)) {
+            console_tick(true);
             stop_png_storage();
             if (!safe_displayed && g_hro_storage_stopped.load(std::memory_order_acquire)) {
                 draw_shutdown_button(true);
                 safe_displayed = true;
                 ESP_LOGI(TAG, "SD unmounted; powering off");
+                console_message("SD card unmounted; powering off");
+                console_tick(true);
                 vTaskDelay(pdMS_TO_TICKS(300));
                 M5.Power.powerOff();
             }
@@ -44,6 +48,7 @@ void hro_display_task( void *arg )
         }
 
         poll_terminal_display();
+        console_tick();
         const uint32_t sequence = g_hro_spectrum_sequence.load( std::memory_order_acquire );
 
         if ( sequence != last_sequence ) {
@@ -75,7 +80,11 @@ void hro_display_task( void *arg )
                         draw_screenshot_info( completed_block_start, filename );
 
                         // 表示した情報も含めてPNG保存
+                        console_printf(ConsoleLevel::Info, "PNG saving: %s", filename);
+                        console_tick(true);
                         const bool saved = save_screenshot_png( completed_block_start, filename );
+                        console_printf(saved ? ConsoleLevel::Info : ConsoleLevel::Error,
+                                       saved ? "PNG saved: %s" : "PNG save failed: %s", filename);
 
                         // 一時表示を消す
                         clear_screenshot_info();

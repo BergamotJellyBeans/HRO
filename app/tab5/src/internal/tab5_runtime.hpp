@@ -158,6 +158,7 @@ inline constexpr const char *HRO_BACKGROUND_BASE = "/sdcard/radio_meteor_observa
 inline constexpr uint32_t AUDIO_SAMPLE_RATE   = 8192;
 
 inline constexpr size_t   AUDIO_BLOCK_SAMPLES = 256;
+inline constexpr unsigned AUDIO_QUEUE_BLOCKS = 32; // One second of PCM headroom.
 
 struct AudioBlock
 {
@@ -168,7 +169,7 @@ inline constexpr int      AUDIO_BUFFER_COUNT  = 3;
 
 inline constexpr int AUDIO_VOL_MINUS_X = 1025;
 
-inline constexpr int AUDIO_VOL_MINUS_Y = 557;
+inline constexpr int AUDIO_VOL_MINUS_Y = 604;
 
 inline constexpr int AUDIO_VOL_MINUS_W = 62;
 
@@ -176,7 +177,7 @@ inline constexpr int AUDIO_VOL_MINUS_H = 38;
 
 inline constexpr int AUDIO_VOL_PLUS_X = 1193;
 
-inline constexpr int AUDIO_VOL_PLUS_Y = 557;
+inline constexpr int AUDIO_VOL_PLUS_Y = 604;
 
 inline constexpr int AUDIO_VOL_PLUS_W = 62;
 
@@ -184,11 +185,11 @@ inline constexpr int AUDIO_VOL_PLUS_H = 38;
 
 inline constexpr int AUDIO_MUTE_X = 1080;
 
-inline constexpr int AUDIO_MUTE_Y = 605;
+inline constexpr int AUDIO_MUTE_Y = 648;
 
 inline constexpr int AUDIO_MUTE_W = 120;
 
-inline constexpr int AUDIO_MUTE_H = 34;
+inline constexpr int AUDIO_MUTE_H = 28;
 
 inline constexpr int64_t SHUTDOWN_HOLD_US = 2 * 1000 * 1000LL;
 
@@ -251,6 +252,7 @@ extern QueueHandle_t g_audio_queue;
 extern std::atomic<bool> g_audio_mute;
 
 extern std::atomic<int>  g_audio_volume;
+extern std::atomic<int> g_display_level_db;
 
 extern std::atomic<bool> g_audio_config_dirty;
 

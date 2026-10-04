@@ -33,6 +33,9 @@ struct Tab5Config
     char pi5_address[16];
     char source_system_info[128]; // Remote display text; never written to config.ini.
 
+    // Local waterfall brightness offset (dB), independent of observation data.
+    int display_level_db;
+
     // Audio
     int  audio_volume;
     bool audio_mute;

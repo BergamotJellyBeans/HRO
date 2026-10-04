@@ -1,3 +1,4 @@
+#include "tab5_console.hpp"
 #include "tab5_runtime.hpp"
 #include "tab5_time.hpp"
 #include "tab5_rtc.h"
@@ -9,6 +10,7 @@ static void time_sync_notification_cb( struct timeval *tv );
 static void time_sync_notification_cb( struct timeval *tv )
 {
     ESP_LOGI( TAG, "NTP time synchronized" );
+    console_message("NTP time synchronized");
 
     time_t now;
     time( &now );
@@ -37,6 +39,7 @@ static void time_sync_notification_cb( struct timeval *tv )
         g_ntp_synced.store( true, std::memory_order_relaxed );
         device::write_rtc( rtc_dt );
         ESP_LOGI( TAG, "RTC synchronized from NTP (UTC)" );
+        console_message("RTC updated from NTP");
         auto verify = device::read_rtc();
         ESP_LOGI(
             TAG,
@@ -104,6 +107,7 @@ bool restore_system_time_from_rtc( void )
         rtc_dt.time.seconds > 59 ) {
 
         ESP_LOGW( TAG, "RTC time is invalid" );
+        console_message("RTC time invalid; waiting for NTP", ConsoleLevel::Warning);
         return false;
     }
 
@@ -138,6 +142,7 @@ bool restore_system_time_from_rtc( void )
     }
 
     ESP_LOGI( TAG, "System clock restored from RTC" );
+    console_message("System clock restored from RTC");
     return true;
 }
 

@@ -31,6 +31,7 @@ std::atomic<bool> g_ntp_synced{false};
 QueueHandle_t g_audio_queue = nullptr;
 std::atomic<bool> g_audio_mute{false};
 std::atomic<int>  g_audio_volume{100};
+std::atomic<int> g_display_level_db{0};
 std::atomic<bool> g_audio_config_dirty{false};
 std::atomic<bool> g_hro_shutdown_requested{ false };
 std::atomic<bool> g_hro_storage_stopped{ false };

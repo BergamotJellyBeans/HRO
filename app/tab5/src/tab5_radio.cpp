@@ -1,3 +1,4 @@
+#include "tab5_console.hpp"
 #include "tab5_runtime.hpp"
 #include "tab5_radio.hpp"
 #include "tab5_helpers.hpp"
@@ -11,6 +12,7 @@ static void apply_sdr_gain(int gain)
         ESP_LOGI(TAG, "RTL tuner gain requested: %.1f dB (manual)", gain / 10.0);
     } else {
         ESP_LOGE(TAG, "RTL gain request failed: %s", esp_rtl_sdr_err_to_name(err));
+        console_printf(ConsoleLevel::Error, "SDR gain failed: %s", esp_rtl_sdr_err_to_name(err));
     }
 }
 
@@ -33,6 +35,7 @@ void rtl_event_callback( esp_rtl_sdr_event_t event, const void *payload, void *u
     switch ( event ) {
     case ESP_RTL_SDR_EVT_ENUMERATED: {
         g_rtl_recognized.store(true, std::memory_order_release);
+        console_message("RTL-SDR recognized");
         const auto *info = static_cast<const esp_rtl_sdr_device_info_t *>( payload );
         if ( info != nullptr ) {
             ESP_LOGI( TAG, "RTL enumerated VID=%04x PID=%04x serial=%s USB=%s",
@@ -102,11 +105,13 @@ case ESP_RTL_SDR_EVT_IQ_BLOCK: {
     }
     case ESP_RTL_SDR_EVT_STOPPED:
         ESP_LOGW( TAG, "RTL STOPPED" );
+        console_message("SDR receiving stopped", ConsoleLevel::Warning);
         g_stream_started.store( false, std::memory_order_release );
         break;
 
     case ESP_RTL_SDR_EVT_DISCONNECTED:
         ESP_LOGW( TAG, "RTL DISCONNECTED" );
+        console_message("RTL-SDR disconnected", ConsoleLevel::Warning);
         g_rtl_ready.store( false, std::memory_order_release );
         g_stream_started.store( false, std::memory_order_release );
         break;
@@ -122,6 +127,8 @@ case ESP_RTL_SDR_EVT_IQ_BLOCK: {
     case ESP_RTL_SDR_EVT_ERROR: {
         const auto *err = static_cast<const esp_rtl_sdr_error_info_t *>( payload );
         ESP_LOGE( TAG, "RTL ERROR: %s", err != nullptr ? esp_rtl_sdr_err_to_name( err->code ) : "unknown" );
+        console_printf(ConsoleLevel::Error, "SDR error: %s",
+                       err != nullptr ? esp_rtl_sdr_err_to_name(err->code) : "unknown");
         break;
     }
 
@@ -173,6 +180,7 @@ void hro_radio_task( void * )
     err = esp_rtl_sdr_start( g_rtl, &stream );
     if ( err != ESP_OK ) {
         ESP_LOGE( TAG, "RTL start failed: %s", esp_rtl_sdr_err_to_name( err ) );
+        console_printf(ConsoleLevel::Error, "SDR start failed: %s", esp_rtl_sdr_err_to_name(err));
         vTaskDelete( nullptr );
         return;
     }
@@ -180,6 +188,8 @@ void hro_radio_task( void * )
     apply_sdr_gain(g_hro_config.sdr_gain);
 
     ESP_LOGI(TAG, "HRO IQ stream running");
+    console_printf(ConsoleLevel::Info, "SDR receiving: %lu S/s, Gain=%.1f dB",
+                   static_cast<unsigned long>(RTL_SAMPLE_RATE), g_hro_config.sdr_gain / 10.0);
 
     uint32_t log_seconds = 0;
     int64_t resamp_test_start_us = esp_timer_get_time();
