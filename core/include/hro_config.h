@@ -19,6 +19,9 @@ struct HroConfig
     std::string antenna;
     int level_peak_range_hz = 0;
 
+    // Local Pi5 waterfall appearance; never applied to transmitted FFT data.
+    int display_level_db = 0;
+
     // Screenshot
     std::string screenshot_prefix;
 

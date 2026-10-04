@@ -120,6 +120,10 @@ add_executable(test_hro_config
     test_hro_config.cpp
 )
 
+add_executable(test_hro_display_config test_hro_display_config.cpp)
+target_link_libraries(test_hro_display_config PRIVATE hro_core)
+add_test(NAME hro_display_config COMMAND test_hro_display_config)
+
 target_link_libraries(test_hro_config
     PRIVATE hro_core
 )

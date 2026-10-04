@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <cstdio>
 
 namespace {
 
@@ -46,6 +47,7 @@ struct PngSecond
     int64_t timestampMs = 0;
 
     float peakDb = 0.0f;
+    int displayLevelDb = 0;
 
     std::array<float, FFT_BINS> fftDb{};
 };
@@ -841,7 +843,7 @@ void drawWaterfall(
 
             setWaterfallColor(
                 cr,
-                second.fftDb[bin]);
+                second.fftDb[bin] + second.displayLevelDb);
 
             cairo_rectangle(
                 cr,
@@ -1599,7 +1601,19 @@ int main()
             // path so PNG compression cannot delay UDP receive.
             const auto pngStart = std::chrono::steady_clock::now();
 
-            writePng(config, buffer, currentBlockStart);
+            const bool pngSaved = writePng(config, buffer, currentBlockStart);
+            const std::string pngPath = makePngPath(config, currentBlockStart);
+            std::ofstream status("/mnt/hro/png/.latest-png.json.tmp");
+            status << "{\"timestamp_ms\":" << timestampMs
+                   << ",\"saved\":" << (pngSaved ? "true" : "false")
+                   << ",\"received_seconds\":" << receivedCount
+                   << ",\"missing_seconds\":" << missingCount
+                   << ",\"filename\":\"" << escapeJson(std::filesystem::path(pngPath).filename().string()) << "\"}";
+            status.flush();
+            if (status.good()) {
+                status.close();
+                std::rename("/mnt/hro/png/.latest-png.json.tmp", "/mnt/hro/png/.latest-png.json");
+            }
 
             const auto pngEnd = std::chrono::steady_clock::now();
 
@@ -1665,6 +1679,11 @@ int main()
                 static_cast<std::size_t>(
                     secondIndex)];
 
+        // Read the small local config once per incoming second. Reload appearance only;
+        // observation settings still require the normal coordinated restart.
+        HroConfig appearance;
+        if (appearance.load("/etc/hro/config.ini")) config.display_level_db = appearance.display_level_db;
+        second.displayLevelDb = config.display_level_db;
         second.valid =
             true;
 
