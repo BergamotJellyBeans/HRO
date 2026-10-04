@@ -20,6 +20,8 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <mutex>
+#include <cstdio>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -32,6 +34,7 @@ using json = nlohmann::json;
 
 namespace
 {
+std::mutex configMutex;
 constexpr uint32_t HRO_LIVE_MAGIC = 0x48524F31;  // "HRO1"
 constexpr uint16_t HRO_LIVE_VERSION = 1;
 //constexpr std::size_t HRO_LIVE_FFT_BINS = 601;
@@ -1112,6 +1115,15 @@ int main()
                     "systemctl is-active --quiet hro-engine.service");
 
             json result;
+            // Query Pi5's system clock, independently of the browser's clock.
+            std::string sync;
+            if (FILE* pipe = popen("timedatectl show --property=NTPSynchronized --value 2>/dev/null", "r")) {
+                char value[32]{};
+                if (fgets(value, sizeof(value), pipe)) sync = value;
+                if (pclose(pipe) != 0) sync.clear();
+            }
+            result["time_source"] = sync.rfind("yes", 0) == 0 ? "NTP" :
+                sync.rfind("no", 0) == 0 ? "RTC" : "UNKNOWN";
 
             result["png"] =
                 (pngResult == 0) ? "running" : "stopped";
@@ -1225,9 +1237,53 @@ int main()
             }).detach();
         });
 
+    server.Get("/api/display", [](const httplib::Request&, httplib::Response& res) {
+        std::lock_guard<std::mutex> lock(configMutex);
+        HroConfig config;
+        if (!config.load("/etc/hro/config.ini")) {
+            res.status = 500;
+            res.set_content(json{{"error", "Failed to load config.ini"}}.dump(), "application/json");
+            return;
+        }
+        res.set_content(json{{"level_db", config.display_level_db}}.dump(), "application/json");
+    });
+    server.Post("/api/display", [](const httplib::Request& req, httplib::Response& res) {
+        try {
+            const auto body = json::parse(req.body);
+            if (!body.at("level_db").is_number_integer())
+                throw std::runtime_error("Display Level must be an integer");
+            const double requested = body.at("level_db").get<double>();
+            if (requested < -30 || requested > 30)
+                throw std::runtime_error("Display Level must be between -30 and +30 dB");
+            const int level = static_cast<int>(requested);
+            std::lock_guard<std::mutex> lock(configMutex);
+            HroConfig config;
+            const bool loaded = config.load("/etc/hro/config.ini");
+            config.display_level_db = level;
+            if (!loaded || !config.save("/etc/hro/config.ini")) {
+                res.status = 500;
+                res.set_content(json{{"error", "Failed to save display settings"}}.dump(), "application/json");
+                return;
+            }
+            res.set_content(json{{"level_db", level}}.dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json{{"error", e.what()}}.dump(), "application/json");
+        }
+    });
+    server.Get("/api/monitor/png", [](const httplib::Request&, httplib::Response& res) {
+        // Written atomically by hro-png after each PNG attempt, not inferred from time.
+        std::ifstream file("/mnt/hro/png/.latest-png.json");
+        std::string contents((std::istreambuf_iterator<char>(file)), {});
+        if (contents.size() > 4096) { res.status = 500; return; }
+        const auto status = json::parse(contents, nullptr, false);
+        res.set_content((status.is_discarded() ? json::object() : status).dump(), "application/json");
+    });
+
     server.Get("/api/config",
         [](const httplib::Request&, httplib::Response& res)
         {
+            std::lock_guard<std::mutex> lock(configMutex);
             HroConfig config;
 
             if (!config.load("/etc/hro/config.ini"))
@@ -1279,7 +1335,9 @@ int main()
             {
                 const json body = json::parse(req.body);
 
+                std::lock_guard<std::mutex> lock(configMutex);
                 HroConfig config;
+                config.load("/etc/hro/config.ini"); // Preserve appearance when a config exists; allow first-time setup.
 
                 config.observer =
                     body.at("station").at("observer").get<std::string>();

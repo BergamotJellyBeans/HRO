@@ -36,57 +36,34 @@ body {
 #audioControls {
     position: fixed;
     z-index: 10;
-
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-
     font-family: 'HRO-Nunito', sans-serif;
-    color: #00dfff;
-
+    color: #f4f7f8;
     transform-origin: top left;
     box-sizing: border-box;
+    background: #000;
+    border: 1px solid #fff;
 }
-
-#audioControls .audioTitle {
-    position: absolute;
-    top: 10px;
-    left: 0;
-    width: 100%;
-
-    text-align: center;
-    font-size: 15px;
-    font-weight: 700;
+#audioControls .controlTitle {
+    position: absolute; left: 0; width: 100%; text-align: center;
+    font-size: 16px; font-weight: 700;
 }
-
-#audioControls .audioButtons {
-    display: flex;
-    justify-content: center;
-    gap: 6px;
-}
-
-
-
 #audioControls button {
-    width: 70px;
-    height: 36px;
-    font-size: 14px;
-    font-weight: 700;
-    margin: 3px;
+    position: absolute; padding: 0; background: #000; color: #fff;
+    border: 1px solid #fff; font: 700 16px 'HRO-Nunito', sans-serif;
+    cursor: pointer;
 }
-
-#audioControls button.audioActive {
-    background-color: #20c060;
-    color: #ffffff;
+#audioControls button:active { background: #263c49; }
+#audioControls output {
+    position: absolute; left: 88px; width: 72px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; color: #00dfff;
 }
-
-#audioControls label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
+#displayMinus { left: 9px; top: 25px; width: 78px; height: 32px; }
+#displayPlus { left: 161px; top: 25px; width: 78px; height: 32px; }
+#audioMinus { left: 9px; top: 83px; width: 62px; height: 38px; }
+#audioPlus { left: 177px; top: 83px; width: 62px; height: 38px; }
+#audioToggle { left: 64px; top: 127px; width: 120px; height: 28px; }
+#audioControls button.muted { border-color: #ff4040; color: #ff4040; }
 </style>
 </head>
 
@@ -95,23 +72,15 @@ body {
 <canvas id="monitor" width="1280" height="720"></canvas>
 
 <div id="audioControls">
-    <div class="audioTitle">Audio Control</div>
-
-    <div class="audioButtons">
-        <button id="audioOnButton">ON</button>
-        <button id="audioOffButton">OFF</button>
-    </div>
-
-    <label>
-        VOL
-        <input
-            id="audioVolume"
-            type="range"
-            min="0"
-            max="4"
-            step="0.1"
-            value="1">
-    </label>
+    <div class="controlTitle" style="top:2px">DISPLAY LEVEL</div>
+    <button id="displayMinus">LEVEL-</button>
+    <output id="displayLevel" style="top:25px">0 dB</output>
+    <button id="displayPlus">LEVEL+</button>
+    <div class="controlTitle" style="top:63px">AUDIO</div>
+    <button id="audioMinus">VOL-</button>
+    <output id="audioVolume" style="top:86px">25%</output>
+    <button id="audioPlus">VOL+</button>
+    <button id="audioToggle" class="muted">MUTED</button>
 </div>
 
 <script>
@@ -240,11 +209,9 @@ const AUDIO_SAMPLE_RATE = 8192;
 
 function updateAudioButtons(isOn)
 {
-    document.getElementById('audioOnButton')
-        .classList.toggle('audioActive', isOn);
-
-    document.getElementById('audioOffButton')
-        .classList.toggle('audioActive', !isOn);
+    const button = document.getElementById('audioToggle');
+    button.textContent = isOn ? 'MUTE' : 'MUTED';
+    button.classList.toggle('muted', !isOn);
 }
 
 async function startAudio()
@@ -254,7 +221,7 @@ async function startAudio()
         audioContext = new AudioContext();
 
         audioGain = audioContext.createGain();
-        audioGain.gain.value = 1.0;
+        audioGain.gain.value = audioVolume;
         audioGain.connect(audioContext.destination);
     }
 
@@ -297,6 +264,7 @@ function connectAudioWebSocket()
     audioSocket.onopen = () =>
     {
         console.log('AUDIO WebSocket connected');
+        consoleMessage('Audio connected');
 
         updateAudioButtons(true);
 
@@ -315,6 +283,7 @@ function connectAudioWebSocket()
         );
 
         audioSocket = null;
+        consoleMessage(event.code === 1000 ? "Audio stopped" : "Audio disconnected", event.code === 1000 ? "info" : "warning");
 
         updateAudioButtons(false);
 
@@ -323,6 +292,7 @@ function connectAudioWebSocket()
     audioSocket.onerror = (event) =>
     {
         console.error('AUDIO WebSocket error', event);
+        consoleMessage('Audio connection error', 'error');
     };
 
     audioSocket.onmessage = (event) =>
@@ -370,6 +340,7 @@ function playAudioSamples(samples)
     if (nextAudioTime < now ||
         nextAudioTime > now + 0.5)
     {
+        if (nextAudioTime) consoleMessage("Audio buffering: playback timing reset", "warning");
         nextAudioTime = now + 0.1;
     }
 
@@ -379,26 +350,125 @@ function playAudioSamples(samples)
         samples.length / AUDIO_SAMPLE_RATE;
 }
 
-document.getElementById('audioOnButton').onclick = async () =>
-{
-    await startAudio();
-};
+let displayLevel = 0;
+let audioVolume = 1;
+try {
+    const saved = Number(localStorage.getItem('hro.audioVolume') ?? 1);
+    if (Number.isFinite(saved)) audioVolume = Math.max(0, Math.min(4, saved));
+} catch (_) {}
+let saveTimer = null;
+let savePending = false;
+let saving = false;
+let lastDataAt = 0;
+let observationTimeMs = null;
+let clockSource = "--";
+let dataInterrupted = false;
+let liveReconnect = null;
+let monitorReady = false;
+const consoleLines = [];
 
-document.getElementById('audioOffButton').onclick = () =>
+function consoleMessage(text, level = 'info')
 {
-    stopAudio();
-};
-
-document.getElementById('audioVolume').oninput = (event) =>
-{
-    if (audioGain)
-    {
-        audioGain.gain.value =
-            Number(event.target.value);
+    const time = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', second: '2-digit'
+    }).format(new Date());
+    const previous = consoleLines[consoleLines.length - 1];
+    if (previous && previous.text === text && previous.level === level) {
+        previous.count++; previous.time = time;
+    } else {
+        consoleLines.push({text, level, time, count: 1});
+        if (consoleLines.length > 9) consoleLines.shift();
     }
+    console.log(`[Pi5] ${text}`);
+    if (monitorReady) drawMonitor();
+}
+function drawConsole()
+{
+    ctx.save();
+    ctx.fillStyle = '#000'; ctx.fillRect(10, 480, 1000, 195);
+    ctx.strokeStyle = '#38434b'; ctx.strokeRect(10.5, 480.5, 999, 194);
+    ctx.beginPath(); ctx.rect(14, 484, 992, 187); ctx.clip();
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.font = '600 14px "HRO-Nunito"';
+    consoleLines.forEach((line, i) => {
+        ctx.fillStyle = line.level === 'error' ? '#ff4040' : line.level === 'warning' ? '#ffff00' : '#20dff3';
+        ctx.fillText(`${line.time} [Pi5] ${line.text}${line.count > 1 ? ` (x${line.count})` : ''}`, 14, 484 + i * 20);
+    });
+    ctx.restore();
+}
+function updateDisplayLevel()
+{
+    document.getElementById('displayLevel').textContent = `${displayLevel > 0 ? '+' : ''}${displayLevel} dB`;
+}
+function updateVolume()
+{
+    document.getElementById('audioVolume').textContent = `${Math.round(audioVolume * 25)}%`;
+    if (audioGain) audioGain.gain.value = audioVolume;
+    try { localStorage.setItem('hro.audioVolume', audioVolume); } catch (_) {}
+}
+async function saveDisplayLevel()
+{
+    if (saving) { savePending = true; return; }
+    saving = true; savePending = false;
+    const level = displayLevel;
+    try {
+        const response = await fetch('/api/display', {method: 'POST',
+            headers: {'Content-Type': 'application/json'}, body: JSON.stringify({level_db: level})});
+        if (!response.ok) throw new Error('Save failed');
+        consoleMessage(`Display Level saved: ${level} dB`);
+    } catch (_) { consoleMessage('Display Level save failed; press LEVEL to retry', 'error'); }
+    finally { saving = false; if (savePending) saveDisplayLevel(); }
+}
+function changeDisplayLevel(step)
+{
+    const level = Math.max(-30, Math.min(30, displayLevel + step));
+    if (level === displayLevel) return;
+    displayLevel = level; updateDisplayLevel();
+    // Existing canvas pixels retain the colour used when they arrived.
+    consoleMessage(`Display Level: ${level} dB`);
+    clearTimeout(saveTimer); saveTimer = setTimeout(saveDisplayLevel, 2000);
+}
+document.getElementById('displayMinus').onclick = () => changeDisplayLevel(-1);
+document.getElementById('displayPlus').onclick = () => changeDisplayLevel(1);
+document.getElementById('audioMinus').onclick = () => { audioVolume = Math.max(0, audioVolume - 0.4); updateVolume(); };
+document.getElementById('audioPlus').onclick = () => { audioVolume = Math.min(4, audioVolume + 0.4); updateVolume(); };
+document.getElementById('audioToggle').onclick = async () => {
+    if (audioSocket) { stopAudio(); updateAudioButtons(false); consoleMessage('Audio muted'); }
+    else { try { await startAudio(); } catch (_) { consoleMessage('Audio playback could not start', 'error'); } }
 };
+updateAudioButtons(false); updateVolume();
 
-updateAudioButtons(false);
+let lastObservationState = null;
+let lastPngId = null;
+async function pollMonitorStatus()
+{
+    try {
+        const response = await fetch('/api/system/status');
+        if (!response.ok) throw new Error();
+        const status = await response.json();
+        clockSource = ["NTP", "RTC"].includes(status.time_source) ? status.time_source : "--";
+        if (monitorReady) drawMonitor();
+        if (status.observation !== lastObservationState) {
+            consoleMessage(`Observation: ${status.observation.toUpperCase()}`,
+                status.observation === 'running' ? 'info' : 'warning');
+            lastObservationState = status.observation;
+        }
+        const pngResponse = await fetch('/api/monitor/png');
+        if (!pngResponse.ok) throw new Error();
+        const png = await pngResponse.json();
+        if (png.timestamp_ms && png.timestamp_ms !== lastPngId) {
+            const incomplete = Number.isInteger(png.missing_seconds) && png.missing_seconds > 0;
+            consoleMessage(`PNG ${png.saved ? 'saved' : 'save failed'}: ${png.filename}${png.saved && incomplete ? ' (incomplete)' : ''}`,
+                !png.saved ? 'error' : incomplete ? 'warning' : 'info');
+            lastPngId = png.timestamp_ms;
+        }
+    } catch (_) { consoleMessage('System status unavailable', 'warning'); }
+}
+setInterval(() => {
+    if (lastDataAt && Date.now() - lastDataAt > 3000 && !dataInterrupted) {
+        dataInterrupted = true; consoleMessage('Observation data interrupted', 'warning');
+    }
+}, 1000);
 
 function connectLiveWebSocket()
 {
@@ -412,6 +482,7 @@ function connectLiveWebSocket()
     liveSocket.onopen = () =>
     {
         console.log('LIVE WebSocket connected');
+        consoleMessage('Live connection established');
     };
 
     liveSocket.onclose = (event) =>
@@ -421,11 +492,15 @@ function connectLiveWebSocket()
             event.code,
             event.reason
         );
+        consoleMessage('Live disconnected; reconnecting', 'warning');
+        clearTimeout(liveReconnect);
+        liveReconnect = setTimeout(connectLiveWebSocket, 3000);
     };
 
     liveSocket.onerror = (event) =>
     {
         console.error('LIVE WebSocket error', event);
+        consoleMessage('Live connection error', 'error');
     };
 
     liveSocket.onmessage = (event) =>
@@ -447,12 +522,11 @@ function connectLiveWebSocket()
                 return;
             }
 
-            console.log(
-                'LIVE FFT:',
-                message.sequence,
-                message.peak
-            );
 
+            if (!lastDataAt || dataInterrupted) consoleMessage(lastDataAt ? 'Observation data resumed' : 'Observation data receiving');
+            lastDataAt = Date.now(); dataInterrupted = false;
+            if (Number.isFinite(message.timestamp) && message.timestamp >= 946684800000 && message.timestamp < 4102444800000)
+                observationTimeMs = message.timestamp;
             addLiveWaterfallLine(message.fft);
             addLivePeakBar(message.peak);
 
@@ -554,7 +628,7 @@ function addLiveWaterfallLine(fft)
         const value = fft[bin];
 
         waterfallCtx.fillStyle =
-            waterfallColor(value);
+            waterfallColor(value + displayLevel);
 
         waterfallCtx.fillRect(
             x,
@@ -617,7 +691,7 @@ function drawSystemInfo()
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
 
-    ctx.font = '600 10px "HRO-Nunito"';
+    ctx.font = '600 14px "HRO-Nunito"';
     ctx.fillStyle = '#20dff3';
 
     ctx.fillText(
@@ -870,6 +944,22 @@ function buildStaticLayer()
     staticCtx.drawImage(canvas, 0, 0);
 }
 
+function drawObservationClock()
+{
+    ctx.save();
+    ctx.fillStyle = clockSource === 'RTC' ? '#a05000' : '#003c78';
+    ctx.fillRect(540, 678, 250, 25);
+    ctx.fillStyle = '#fff';
+    ctx.font = '600 14px "HRO-Nunito"';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // Render the observation timestamp in JST; never substitute the browser clock.
+    const text = observationTimeMs === null ? `--/--/--  --:--:-- [${clockSource}]` :
+        new Date(observationTimeMs + 9 * 3600000).toISOString().slice(0, 19)
+            .replace(/-/g, '/').replace('T', '  ') + ` [${clockSource}]`;
+    ctx.fillText(text, 665, 690.5);
+    ctx.restore();
+}
+
 function drawMonitor()
 {
     ctx.clearRect(0, 0, 1280, 720);
@@ -898,6 +988,8 @@ function drawMonitor()
 
     // 時刻だけ毎回更新
     drawTimeAxis(new Date());
+    drawConsole();
+    drawObservationClock();
 }
 
 function positionAudioControls()
@@ -917,7 +1009,7 @@ function positionAudioControls()
     const x = 1014;
     const y = 520;
     const w = 250;
-    const h = 144;
+    const h = 161;
 
     // 位置だけ実画面座標へ変換
     controls.style.left =
@@ -942,20 +1034,30 @@ baseImage.onload = async () =>
     try
     {
         await loadConfig();
+        const displayResponse = await fetch('/api/display');
+        if (!displayResponse.ok) throw new Error('Failed to load Display Level');
+        displayLevel = (await displayResponse.json()).level_db;
+        updateDisplayLevel();
+        consoleMessage('Configuration loaded');
 
         // Canvasで使用するNunito Sansを明示的にロード
         await document.fonts.load('600 10px "HRO-Nunito"');
         await document.fonts.load('600 13px "HRO-Nunito"');
 
         buildStaticLayer();
+        monitorReady = true;
         drawMonitor();
         
         positionAudioControls();
         connectLiveWebSocket();
+        pollMonitorStatus();
+        setInterval(pollMonitorStatus, 10000);
     }
     catch (error)
     {
         console.error('Monitor initialization failed:', error);
+        monitorReady = true;
+        consoleMessage(error.message, 'error');
     }
 };
 

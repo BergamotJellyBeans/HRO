@@ -153,6 +153,12 @@ bool HroConfig::load(const std::string& filename)
                     seen.level_peak_range_hz = true;
                 }
             }
+            else if (section == "display" && key == "level_db")
+            {
+                std::size_t used = 0;
+                temp.display_level_db = std::stoi(value, &used);
+                if (used != value.size()) { setDefaults(); return false; }
+            }
             else if (section == "screenshot")
             {
                 if (key == "prefix")
@@ -232,6 +238,7 @@ bool HroConfig::save(const std::string& filename) const
     file << "level_peak_range_hz=" << level_peak_range_hz << "\n";
     file << "\n";
 
+    file << "[display]\nlevel_db=" << display_level_db << "\n\n";
     file << "[screenshot]\n";
     file << "prefix=" << screenshot_prefix << "\n";
 
@@ -261,6 +268,9 @@ bool HroConfig::validate(std::string& error_message) const
         error_message = message;
         return false;
     };
+
+    if (display_level_db < -30 || display_level_db > 30)
+        return set_error("Display Level must be between -30 and +30 dB");
 
     // Station position
     if (latitude < -90.0 || latitude > 90.0)
@@ -357,5 +367,6 @@ void HroConfig::setDefaults()
     antenna = "";
     level_peak_range_hz = 5;
 
+    display_level_db = 0;
     screenshot_prefix = "HRO";
 }
