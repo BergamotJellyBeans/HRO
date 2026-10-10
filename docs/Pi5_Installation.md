@@ -98,30 +98,49 @@ sudo install -d -o "$USER" -g "$(id -gn)" -m 0755 /mnt/hro/development
 
 ## 4. 正確な時刻を得るためのNTP
 
-流星エコーを他の観測地点と比較するため、観測開始前に時計の同期を確認します。「NTPサービスが動いている」ことと「時計が同期済み」であることは分けて確認します。
+Raspberry Pi OSでは標準の`systemd-timesyncd`による時刻同期を利用する構成です。まず既存の同期状態を確認します。既に同期していれば、追加インストールや同期先の変更は不要です。
+
+流星エコーを他の観測地点と比較するため、観測開始前に時計の同期を確認します。「サービスが動いている」ことと「時計が同期済み」であることは分けて確認します。
+
+### 標準の時刻同期を確認する
 
 ```bash
 timedatectl status
 systemctl status systemd-timesyncd.service --no-pager
-systemctl status chrony.service --no-pager
-```
-
-片方が未インストールなら、そのサービスの確認はエラーになります。両方を同時に導入・起動する手順ではありません。
-
-### systemd-timesyncdを使う構築例
-
-chronyなど別のサービスを利用していない新規環境向けです。既にtimesyncdが導入済みなら、インストールは省略できます。
-
-```bash
-sudo apt install -y systemd-timesyncd
-sudo timedatectl set-timezone Asia/Tokyo
-sudo timedatectl set-ntp true
-sudo systemctl enable --now systemd-timesyncd.service
-timedatectl status
 timedatectl timesync-status
 ```
 
-`System clock synchronized: yes`を確認し、`timesync-status`で同期先サーバと時刻差などを記録します。同期直後でなければ状態が変わるまで少し待って再確認します。同期先の変更が必要な場合は`/etc/systemd/timesyncd.conf`またはそのdrop-inで設定し、サービスを再起動します。固定の同期先を設定しなければOS側の設定を使用します。
+`timedatectl status`で次の状態を確認します。
+
+```text
+System clock synchronized: yes
+              NTP service: active
+```
+
+`timesync-status`では同期先サーバと時刻差などを確認できます。ネットワーク接続直後は、同期するまで少し待って再確認します。Pi5-HROではOSが同期したシステム時計を利用します。
+
+### 同期が無効になっている場合
+
+別の同期サービスを使用していないことを確認してから有効にします。
+
+```bash
+sudo timedatectl set-ntp true
+sudo systemctl enable --now systemd-timesyncd.service
+```
+
+タイムゾーンが日本以外になっている場合は、表示時刻の設定を変更します。タイムゾーン設定とNTP同期は別の設定です。
+
+```bash
+sudo timedatectl set-timezone Asia/Tokyo
+```
+
+標準サービスが削除された環境などで、`systemd-timesyncd.service`が存在せず、別の時刻同期サービスも使っていない場合に限り、次を実行してから有効化します。
+
+```bash
+sudo apt install -y systemd-timesyncd
+```
+
+固定の同期先が必要な場合は`/etc/systemd/timesyncd.conf`またはそのdrop-inで設定し、サービスを再起動します。通常はOS側の設定をそのまま使用します。
 
 ### chronyを既に使っている場合
 
