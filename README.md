@@ -7,6 +7,14 @@ This project is developed by **Bergamot JellyBeans** as a project of
 
 The project aims to build a reliable platform for continuous meteor radio observation using software-defined radio (SDR), with support for both stationary and portable observation systems.
 
+## Pi5 Setup and Configuration Examples
+
+[Pi5の設定・NVMeマウント・SMB共有（日本語）](docs/Pi5_Setup.md)
+
+Configuration examples based on the running Pi5 station are available in
+[`examples/pi5/`](examples/pi5/). Replace observer details and the SSD UUID
+before use. The Samba and fstab examples are fragments, not complete replacements.
+
 ## HRO File Format Specification
 
 [日本語：HROファイル形式仕様書 第3版](docs/HRO_File_Format_Specification.md) |

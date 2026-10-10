@@ -1,0 +1,23 @@
+# Copy to /etc/hro/config.ini after editing station-specific values.
+# latitude/longitude below are placeholders, not a real observation site.
+[station]
+observer=Your Name
+location=Your Observation Site
+latitude=0.0
+longitude=0.0
+
+[receiver]
+receiver=RTL-SDR Blog V4
+frequency_hz=53372000
+# Integer in tenths of a dB: 402 means 40.2 dB.
+sdr_gain=402
+fft_center_hz=780
+antenna=Your Antenna
+level_peak_range_hz=50
+
+[display]
+# Display adjustment only; does not change the receiver gain.
+level_db=3
+
+[screenshot]
+prefix=HRO

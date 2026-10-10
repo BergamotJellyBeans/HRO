@@ -1,0 +1,4 @@
+# HRO NVMe mount entry ONLY; do not replace the whole /etc/fstab.
+# Replace YOUR_NVME_FILESYSTEM_UUID with the ext4 filesystem UUID from blkid.
+# Preserve the existing /, /boot/firmware and /proc entries.
+UUID=YOUR_NVME_FILESYSTEM_UUID /mnt/hro ext4 defaults,nofail 0 2

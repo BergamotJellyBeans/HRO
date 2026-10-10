@@ -1,0 +1,20 @@
+# HRO share definitions ONLY; append to the existing /etc/samba/smb.conf.
+# Keep the existing [global] section. Avoid duplicate share definitions.
+# 'hro' must exist as a Linux user and be registered with smbpasswd.
+# Filesystem permissions must allow the intended access.
+
+[HRO]
+   path = /mnt/hro/hro-data
+   browseable = yes
+   read only = no
+   valid users = hro
+   create mask = 0664
+   directory mask = 0775
+
+[HRO-NVMe]
+   path = /mnt/hro
+   browseable = yes
+   read only = no
+   valid users = hro
+   create mask = 0664
+   directory mask = 0775
