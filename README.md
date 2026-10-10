@@ -9,6 +9,8 @@ The project aims to build a reliable platform for continuous meteor radio observ
 
 ## Pi5 Setup and Configuration Examples
 
+[Pi5-HROの構築手順：NTP・RTL-SDR・ビルド・起動（日本語）](docs/Pi5_Installation.md)
+
 [Pi5の設定・NVMeマウント・SMB共有（日本語）](docs/Pi5_Setup.md)
 
 Configuration examples based on the running Pi5 station are available in
