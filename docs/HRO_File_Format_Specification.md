@@ -1,5 +1,7 @@
 # HRO File Format Specification — 第3版
 
+日本語 | [English](HRO_File_Format_Specification_EN.md)
+
 仕様書改訂：第3版（2026-10-04）  
 ファイル形式：HRO File Version 2
 

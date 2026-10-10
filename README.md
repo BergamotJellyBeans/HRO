@@ -9,11 +9,16 @@ The project aims to build a reliable platform for continuous meteor radio observ
 
 ## HRO File Format Specification
 
-[HROファイル形式仕様書 第3版（日本語）](docs/HRO_File_Format_Specification.md)
+[日本語：HROファイル形式仕様書 第3版](docs/HRO_File_Format_Specification.md) |
+[English: HRO File Format Specification, Third Edition](docs/HRO_File_Format_Specification_EN.md)
 
 HRO File Version 2のドラフト仕様です。1時間分のFFTデータと観測条件を、
 UTF-8 JSONヘッダ、Validity Map、Event Map、FFT Dataに格納します。
 仕様書の版とファイル形式のVersionは別の番号です。
+
+Draft specification for HRO File Version 2. Each file stores one hour of FFT
+data and observation metadata. Document edition and file format version
+are separate identifiers.
 
 ## Project Goals
 
