@@ -4,7 +4,7 @@
 # Filesystem permissions must allow the intended access.
 
 [HRO]
-   path = /mnt/hro/hro-data
+   path = /mnt/hro/observations
    browseable = yes
    read only = no
    valid users = hro

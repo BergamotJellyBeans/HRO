@@ -53,17 +53,17 @@ findmnt /mnt/hro
 実機と同じ`nofail`設定はSSDがなくてもOSの起動を妨げないためのものです。
 それだけで観測プログラムの誤保存を防げるわけではないので、マウント確認後に観測を開始します。
 
-初期に用意した配置は次のとおりです。
+現在の配置は次のとおりです。
 
 ```text
 /mnt/hro/
 ├── development/
 │   └── HRO/
-└── hro-data/
+└── observations/
 ```
 
-PNG保存先として`/mnt/hro/png`を使った開発段階もあります。
-共有先と各プログラムの保存先は別の設定なので、使用するソース版と実際の出力先を確認してください。
+以前の`/mnt/hro/hro-data`や`/mnt/hro/png`から、現在は`/mnt/hro/observations`へ観測記録をまとめています。
+SMBの`HRO`共有もこの保存先を参照します。共有先と各プログラムの保存先をそろえてください。
 `HRO-NVMe`共有では`/mnt/hro`全体を参照できます。
 
 ## 3. 観測条件のconfig.ini
@@ -108,7 +108,7 @@ Web設定から保存・変更する場合にも、実行ユーザーがこの�
 
 | 共有名 | Pi5上のフォルダ | 用途 |
 | --- | --- | --- |
-| `HRO` | `/mnt/hro/hro-data` | 初期の観測データ用フォルダ |
+| `HRO` | `/mnt/hro/observations` | 観測記録用フォルダ（PNG・JSON・HROデータ） |
 | `HRO-NVMe` | `/mnt/hro` | 開発用フォルダなども含むSSD領域全体 |
 
 どちらも、認証した`hro`ユーザーによる読み書きが可能な設定です。
@@ -147,9 +147,9 @@ systemctl status smbd --no-pager
 Linux側の権限も確認します。
 
 ```bash
-ls -ld /mnt/hro /mnt/hro/hro-data
-sudo -u hro test -r /mnt/hro/hro-data
-sudo -u hro test -w /mnt/hro/hro-data
+ls -ld /mnt/hro /mnt/hro/observations
+sudo -u hro test -r /mnt/hro/observations
+sudo -u hro test -w /mnt/hro/observations
 ```
 
 共有の`read only = no`だけでは、Linux側の権限は変わりません。
