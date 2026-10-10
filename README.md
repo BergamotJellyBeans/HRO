@@ -7,6 +7,14 @@ This project is developed by **Bergamot JellyBeans** as a project of
 
 The project aims to build a reliable platform for continuous meteor radio observation using software-defined radio (SDR), with support for both stationary and portable observation systems.
 
+## HRO File Format Specification
+
+[HROファイル形式仕様書 第3版（日本語）](docs/HRO_File_Format_Specification.md)
+
+HRO File Version 2のドラフト仕様です。1時間分のFFTデータと観測条件を、
+UTF-8 JSONヘッダ、Validity Map、Event Map、FFT Dataに格納します。
+仕様書の版とファイル形式のVersionは別の番号です。
+
 ## Project Goals
 
 - Continuous 24/7 radio meteor observation
