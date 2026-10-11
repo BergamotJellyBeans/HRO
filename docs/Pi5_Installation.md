@@ -65,11 +65,33 @@ NVMeを`/mnt/hro`にマウントします。既存データを消すフォーマ
 
 ```bash
 lsblk -f
+```
+
+出力の`NAME`でNVMeのext4パーティション（例：`nvme0n1p1`）を探し、その行の`UUID`列を確認します。SSD全体の`nvme0n1`ではなく、`FSTYPE`が`ext4`のパーティションのUUIDを使います。SDカード側の`mmcblk0p2`（`rootfs`）や`mmcblk0p1`（`bootfs`）のUUIDとは区別してください。
+
+出力例は次のとおりです（関係する列のみ抜粋。UUIDは説明用の架空の値です）。
+
+```text
+NAME        FSTYPE LABEL    UUID
+nvme0n1p1   ext4   HRO_DATA 12345678-1234-1234-1234-123456789abc
+```
+
+UUIDはファイルシステムごとに異なり、再フォーマットすると変わります。この例の値をそのまま使わず、自分の`lsblk -f`出力からコピーしてください。確認できたら、マウント先を作成し、設定を編集します。
+
+```bash
 sudo mkdir -p /mnt/hro
 sudo nano /etc/fstab
 ```
 
 [設定例](../examples/pi5/fstab.example)を参考に、実際のext4パーティションのUUIDでマウント行を追加します。既存のOSの行は残します。
+
+設定例の`YOUR_NVME_FILESYSTEM_UUID`は置き換え用の文字列です。必ず、確認したUUIDに置き換えてください。上記の架空のUUIDを使った記載例は次のとおりです。実際には自分のUUIDに置き換えてください。
+
+```text
+UUID=12345678-1234-1234-1234-123456789abc /mnt/hro ext4 defaults,nofail 0 2
+```
+
+保存してnanoを終了したら、次を実行します。
 
 ```bash
 sudo systemctl daemon-reload
@@ -77,7 +99,7 @@ sudo mount /mnt/hro
 findmnt /mnt/hro
 ```
 
-以降はNVMeが正しくマウントされたことを確認してから進めます。
+`findmnt /mnt/hro`で`TARGET`が`/mnt/hro`、`SOURCE`が対象のNVMeパーティション（例：`/dev/nvme0n1p1`）、`FSTYPE`が`ext4`であることを確認します。`mount`でエラーが出た場合や、`findmnt`で何も表示されない場合は、ここで止めてUUIDと設定を確認してください。マウント前に`/mnt/hro`配下へファイルを作ると、SSDではなくOS側の領域へ保存されるため、以降はNVMeが正しくマウントされたことを確認してから進めます。
 
 サービス定義の実行ユーザーは`hro`です。存在しない場合に作成します。
 
