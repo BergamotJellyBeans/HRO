@@ -366,10 +366,26 @@ Web画面の観測開始・停止・設定反映・Pi5終了に使います。�
 
 ## 9. サービス登録と起動
 
+以下の`systemd/...`はHROのソースフォルダからの相対パスです。ホームディレクトリ（`~`）で実行すると、`install: cannot stat ...: No such file or directory`となり、サービス定義をコピーできません。そのまま後続のコマンドを実行すると、`Unit ... does not exist`や`Unit ... not found`となります。
+
+まずHROのソースフォルダへ移動し、3ファイルが存在することを確認します。ファイルが見つからない場合は、ここで止めて取得先を確認してください。
+
+```bash
+cd /mnt/hro/development/HRO
+ls systemd/hro-engine.service systemd/hro-web.service systemd/hro-png.service
+```
+
+3ファイルが表示されたら、サービス定義をコピーします。
+
 ```bash
 sudo install -o root -g root -m 0644 \
   systemd/hro-engine.service systemd/hro-web.service \
   systemd/hro-png.service /etc/systemd/system/
+```
+
+コピー時にエラーがないことを確認してから、次の登録・起動コマンドを実行します。
+
+```bash
 sudo systemctl daemon-reload
 sudo systemctl enable hro-png.service hro-web.service hro-engine.service
 sudo systemctl start hro-png.service hro-web.service
