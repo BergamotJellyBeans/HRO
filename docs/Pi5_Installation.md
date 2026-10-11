@@ -267,6 +267,45 @@ ldd build/app/pi/hro-engine/hro-engine
 
 `ldd`で`not found`がないこと、`librtlsdr`のリンク先が意図した導入先であることを確認します。メモリ不足でコンパイラが終了した場合は`-j1`で再実行します。SSH先でビルドするため、Mac・Windows側にC++環境を作る必要はありません。
 
+### 正常な出力例（2号機での確認）
+
+2026年10月11日、`pi5-hro-02`では次の10件のテストがすべて`Passed`となりました。以下は実機出力から実行時間を省略したものです。
+
+```text
+Test project /mnt/hro/development/HRO/build
+ 1/10 Test  #1: observation_file_manager ......... Passed
+ 2/10 Test  #2: fs4_rotator ...................... Passed
+ 3/10 Test  #3: decimator_15 ..................... Passed
+ 4/10 Test  #4: resampler_16_125 ................. Passed
+ 5/10 Test  #5: nco_shifter ...................... Passed
+ 6/10 Test  #6: dsp_chain ........................ Passed
+ 7/10 Test  #7: hann_window ...................... Passed
+ 8/10 Test  #8: complex_fft ...................... Passed
+ 9/10 Test  #9: hro_display_config ............... Passed
+10/10 Test #10: hro_config ....................... Passed
+
+100% tests passed, 0 tests failed out of 10
+```
+
+正常の目安は、実行したテストがすべて成功し、失敗が0件であることです。テスト名・件数・実行時間はHROの版や環境によって変わる場合があります。
+
+同じ実機の`ldd`出力では、`not found`はなく、RTL-SDRライブラリは今回ソースからインストールした`/usr/local/lib/librtlsdr.so.0`を参照していました。以下はメモリアドレスを省略した出力例です。
+
+```text
+linux-vdso.so.1
+librtlsdr.so.0 => /usr/local/lib/librtlsdr.so.0
+libstdc++.so.6 => /lib/aarch64-linux-gnu/libstdc++.so.6
+libm.so.6 => /lib/aarch64-linux-gnu/libm.so.6
+libgcc_s.so.1 => /lib/aarch64-linux-gnu/libgcc_s.so.1
+libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6
+libusb-1.0.so.0 => /lib/aarch64-linux-gnu/libusb-1.0.so.0
+/lib/ld-linux-aarch64.so.1
+libudev.so.1 => /lib/aarch64-linux-gnu/libudev.so.1
+libcap.so.2 => /lib/aarch64-linux-gnu/libcap.so.2
+```
+
+この結果は、テストの成功と`hro-engine`の共有ライブラリ解決が正常であることを示します。実際のSDR受信やPNG保存の動作確認は、以降の手順で行います。
+
 ## 7. 観測設定と保存先
 
 ```bash
