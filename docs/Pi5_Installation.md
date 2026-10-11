@@ -66,7 +66,7 @@ NVMeを`/mnt/hro`にマウントします。既存データを消すフォーマ
 ```bash
 lsblk -f
 sudo mkdir -p /mnt/hro
-sudoedit /etc/fstab
+sudo nano /etc/fstab
 ```
 
 [設定例](../examples/pi5/fstab.example)を参考に、実際のext4パーティションのUUIDでマウント行を追加します。既存のOSの行は残します。
