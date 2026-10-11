@@ -13,6 +13,7 @@
 #include "tab5_time.hpp"
 #include "tab5_wifi.hpp"
 #include "tab5_terminal.hpp"
+#include "tab5_visual.hpp"
 
 namespace hro::tab5::app {
 static void start_display_and_audio()
@@ -172,6 +173,7 @@ void start()
     }
 
     wifi_start_ap(saved_ssid, saved_password);
+    visual_start();
 
     // --------------------------------------------------------
     // esp_rtl_sdr

@@ -1,10 +1,12 @@
 #include "tab5_field.hpp"
 #include "tab5_runtime.hpp"
 #include "tab5_display.hpp"
+#include "tab5_visual_markers.hpp"
 #include "tab5_helpers.hpp"
 #include "tab5_observation.hpp"
 #include "tab5_storage.hpp"
 #include "tab5_terminal.hpp"
+#include "tab5_wifi.hpp"
 
 namespace hro::tab5::app {
 void draw_system_info()
@@ -12,10 +14,20 @@ void draw_system_info()
     M5.Display.setFont( &fonts::Font2 );
     M5.Display.setTextDatum( middle_left );
     M5.Display.setTextColor( M5.Display.color565( 32, 223, 243 ) );
-    M5.Display.fillRect(12, 680, 280, 24, BLACK);
-    M5.Display.drawString(terminal_mode()
-        ? g_hro_config.source_system_info
-        : "Tab5-HRO   v0.1   ESP32-P4 + RTL-SDR", 12, 692);
+    char name[16] = {};
+    const esp_err_t err = wifi_device_name(name, sizeof(name));
+    if (err != ESP_OK) {
+        snprintf(name, sizeof(name), "Tab5-HRO");
+        ESP_LOGW(TAG, "Cannot read device MAC: %s", esp_err_to_name(err));
+    }
+    char info[160] = {};
+    if (terminal_mode()) {
+        snprintf(info, sizeof(info), "%s   %s", name, g_hro_config.source_system_info);
+    } else {
+        snprintf(info, sizeof(info), "%s   v0.1   ESP32-P4 + RTL-SDR", name);
+    }
+    M5.Display.fillRect(12, 680, 1000, 24, BLACK);
+    M5.Display.drawString(info, 12, 692);
 }
 
 
@@ -298,6 +310,7 @@ bool load_base_screen( void )
     // 右側の周波数目盛と背景PNGのカラーバーは保持する。
     g_waterfall.pushSprite( WF_X, WF_Y );
     g_level_graph.pushSprite( LEVEL_X, LEVEL_Y );
+    draw_visual_markers(terminal_mode() ? terminal_observation_time() : time(nullptr));
 
     // 不要になったメモリを解放
     base_screen.deleteSprite();

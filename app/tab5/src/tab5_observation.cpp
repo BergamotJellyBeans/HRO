@@ -9,6 +9,7 @@
 #include "tab5_storage.hpp"
 #include "tab5_terminal.hpp"
 #include "tab5_console.hpp"
+#include "tab5_visual_markers.hpp"
 
 namespace hro::tab5::app {
 static time_t g_screenshot_block_start = 0;
@@ -18,6 +19,7 @@ void hro_display_task( void *arg )
 {
     uint32_t last_sequence = 0;
     unsigned draw_count = 0;
+    std::uint32_t marker_revision = 0;
     static int64_t last_battery_update_us = 0;
     static bool safe_displayed = false;
     bool screenshot_full_block_ready = false;
@@ -84,6 +86,7 @@ void hro_display_task( void *arg )
                         // 表示した情報も含めてPNG保存
                         console_printf(ConsoleLevel::Info, "PNG saving: %s", filename);
                         console_tick(true);
+                        draw_visual_markers(completed_block_start + TOTAL_SEC - 1);
                         const bool saved = save_screenshot_png( completed_block_start, filename );
                         console_printf(saved ? ConsoleLevel::Info : ConsoleLevel::Error,
                                        saved ? "PNG saved: %s" : "PNG save failed: %s", filename);
@@ -109,6 +112,8 @@ void hro_display_task( void *arg )
             // 境界処理が終わってから今回のSpectrumを描く
             const int64_t draw_start_us = esp_timer_get_time();
             draw_waterfall_column( g_hro_spectrum );
+            marker_revision = visual_marker_revision();
+            draw_visual_markers(now);
             const int64_t waterfall_done_us = esp_timer_get_time();
             draw_hro_level_history();
             const int64_t level_done_us = esp_timer_get_time();
@@ -131,6 +136,11 @@ void hro_display_task( void *arg )
                          static_cast<long long>(level_done_us - waterfall_done_us),
                          static_cast<long long>(axis_done_us - axis_start_us));
             }
+        }
+        const auto current_marker_revision = visual_marker_revision();
+        if (marker_revision != current_marker_revision) {
+            marker_revision = current_marker_revision;
+            draw_visual_markers(terminal_mode() ? terminal_observation_time() : time(nullptr));
         }
         vTaskDelay(pdMS_TO_TICKS( 20 ));
     }

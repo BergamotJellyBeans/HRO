@@ -64,6 +64,24 @@ static void wifi_event_handler( void *arg, esp_event_base_t event_base, int32_t 
         } else {
             ESP_LOGI( TAG, "Wi-Fi setup mode: STA reconnect disabled" );
         }
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED) {
+        const auto* event = static_cast<const wifi_event_ap_staconnected_t*>(event_data);
+        console_printf(ConsoleLevel::Info, "AP client connected: ID %02X%02X%02X",
+                       static_cast<unsigned>(event->mac[3]), static_cast<unsigned>(event->mac[4]),
+                       static_cast<unsigned>(event->mac[5]));
+        ESP_LOGI(TAG, "AP client connected: MAC=%02X:%02X:%02X:%02X:%02X:%02X AID=%u",
+                 static_cast<unsigned>(event->mac[0]), static_cast<unsigned>(event->mac[1]),
+                 static_cast<unsigned>(event->mac[2]), static_cast<unsigned>(event->mac[3]),
+                 static_cast<unsigned>(event->mac[4]), static_cast<unsigned>(event->mac[5]),
+                 static_cast<unsigned>(event->aid));
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STADISCONNECTED) {
+        const auto* event = static_cast<const wifi_event_ap_stadisconnected_t*>(event_data);
+        console_printf(ConsoleLevel::Warning, "AP client disconnected: ID %02X%02X%02X",
+                       static_cast<unsigned>(event->mac[3]), static_cast<unsigned>(event->mac[4]),
+                       static_cast<unsigned>(event->mac[5]));
+        ESP_LOGI(TAG, "AP client disconnected: ID=%02X%02X%02X",
+                 static_cast<unsigned>(event->mac[3]), static_cast<unsigned>(event->mac[4]),
+                 static_cast<unsigned>(event->mac[5]));
     } else if ( event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP ) {
         auto *event = static_cast<ip_event_got_ip_t *>( event_data );
         ESP_LOGI( TAG, "Wi-Fi STA got IP: " IPSTR, IP2STR( &event->ip_info.ip ) );
@@ -404,6 +422,18 @@ static httpd_handle_t start_wifi_setup_webserver( void )
     return server;
 }
 
+esp_err_t wifi_device_name(char* name, size_t size)
+{
+    if (!name || size < 16) return ESP_ERR_INVALID_ARG;
+    name[0] = '\0';
+    uint8_t mac[6] = {};
+    const esp_err_t err = esp_efuse_mac_get_default(mac);
+    if (err != ESP_OK) return err;
+    snprintf(name, size, "Tab5-HRO-%02X%02X%02X",
+             static_cast<unsigned>(mac[3]), static_cast<unsigned>(mac[4]), static_cast<unsigned>(mac[5]));
+    return ESP_OK;
+}
+
 void wifi_start_ap( const char *saved_ssid, const char *saved_password )
 {
     ESP_LOGI( TAG, "Starting Wi-Fi SoftAP" );
@@ -431,11 +461,8 @@ void wifi_start_ap( const char *saved_ssid, const char *saved_password )
     ESP_ERROR_CHECK( esp_event_handler_register( WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, nullptr ) );
     ESP_ERROR_CHECK( esp_event_handler_register( IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, nullptr ) );
 
-    uint8_t mac[6];
-    ESP_ERROR_CHECK( esp_efuse_mac_get_default( mac ) );
-
     char ssid[32];
-    snprintf( ssid, sizeof( ssid ), "Tab5-HRO-%02X%02X%02X", mac[3], mac[4], mac[5] );
+    ESP_ERROR_CHECK(wifi_device_name(ssid, sizeof(ssid)));
     strncpy( reinterpret_cast<char *>(wifi_config.ap.ssid), ssid, sizeof( wifi_config.ap.ssid ) - 1 );
     wifi_config.ap.ssid[sizeof( wifi_config.ap.ssid ) - 1] = '\0';
     wifi_config.ap.ssid_len = strlen( reinterpret_cast<char *>(wifi_config.ap.ssid) );

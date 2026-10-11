@@ -1,6 +1,7 @@
 #include "tab5_runtime.hpp"
 #include "tab5_storage.hpp"
 #include "tab5_sdcard.h"
+#include "tab5_visual_log.hpp"
 
 namespace hro::tab5::app {
 
@@ -8,6 +9,7 @@ namespace hro::tab5::app {
 void stop_png_storage()
 {
     if (g_hro_storage_stopped.load(std::memory_order_acquire)) return;
+    if (!visual_log_stop()) return;
     if (!device::sdcard_mounted()) {
         g_hro_storage_stopped.store(true, std::memory_order_release);
         return;
