@@ -247,7 +247,7 @@ std::string makePngPath(
         &tm);
 
     const std::filesystem::path directory =
-        std::filesystem::path("/mnt/hro/png") /
+        std::filesystem::path("/mnt/hro/observations") /
         year /
         month /
         day;
@@ -319,7 +319,7 @@ std::string makeJsonPath(
         &tm);
 
     const std::filesystem::path directory =
-        std::filesystem::path("/mnt/hro/png") /
+        std::filesystem::path("/mnt/hro/observations") /
         year /
         month /
         day;
@@ -1603,7 +1603,7 @@ int main()
 
             const bool pngSaved = writePng(config, buffer, currentBlockStart);
             const std::string pngPath = makePngPath(config, currentBlockStart);
-            std::ofstream status("/mnt/hro/png/.latest-png.json.tmp");
+            std::ofstream status("/mnt/hro/observations/.latest-png.json.tmp");
             status << "{\"timestamp_ms\":" << timestampMs
                    << ",\"saved\":" << (pngSaved ? "true" : "false")
                    << ",\"received_seconds\":" << receivedCount
@@ -1612,7 +1612,7 @@ int main()
             status.flush();
             if (status.good()) {
                 status.close();
-                std::rename("/mnt/hro/png/.latest-png.json.tmp", "/mnt/hro/png/.latest-png.json");
+                std::rename("/mnt/hro/observations/.latest-png.json.tmp", "/mnt/hro/observations/.latest-png.json");
             }
 
             const auto pngEnd = std::chrono::steady_clock::now();

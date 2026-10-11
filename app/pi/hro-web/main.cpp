@@ -869,7 +869,7 @@ int main()
                 return;
             }
 
-            const fs::path archiveRoot = "/mnt/hro/png";
+            const fs::path archiveRoot = "/mnt/hro/observations";
             fs::path foundPath;
 
             try
@@ -924,7 +924,7 @@ int main()
                 return;
             }
 
-            const fs::path archiveRoot = "/mnt/hro/png";
+            const fs::path archiveRoot = "/mnt/hro/observations";
             fs::path foundPath;
 
             try
@@ -970,7 +970,7 @@ int main()
         {
             namespace fs = std::filesystem;
 
-            const fs::path archiveRoot = "/mnt/hro/png";
+            const fs::path archiveRoot = "/mnt/hro/observations";
 
             try
             {
@@ -1273,7 +1273,7 @@ int main()
     });
     server.Get("/api/monitor/png", [](const httplib::Request&, httplib::Response& res) {
         // Written atomically by hro-png after each PNG attempt, not inferred from time.
-        std::ifstream file("/mnt/hro/png/.latest-png.json");
+        std::ifstream file("/mnt/hro/observations/.latest-png.json");
         std::string contents((std::istreambuf_iterator<char>(file)), {});
         if (contents.size() > 4096) { res.status = 500; return; }
         const auto status = json::parse(contents, nullptr, false);

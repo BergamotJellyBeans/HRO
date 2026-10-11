@@ -65,7 +65,7 @@ findmnt /mnt/hro
 └── observations/
 ```
 
-以前の`/mnt/hro/hro-data`や`/mnt/hro/png`から、現在は`/mnt/hro/observations`へ観測記録をまとめています。
+観測記録の保存先は`/mnt/hro/observations`です。
 SMBの`HRO`共有もこの保存先を参照します。共有先と各プログラムの保存先をそろえてください。
 `HRO-NVMe`共有では`/mnt/hro`全体を参照できます。
 
