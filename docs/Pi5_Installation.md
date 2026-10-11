@@ -212,6 +212,14 @@ Failed to open rtlsdr device #0.
 lsmod | grep -E 'dvb_usb_rtl28xxu|rtl2832'
 ```
 
+出力では、先頭が`dvb_usb_rtl28xxu`の行を確認します。例えば、次の行はテレビ受信用のカーネルドライバがロードされていることを示します。
+
+```text
+dvb_usb_rtl28xxu       49152  1
+```
+
+右端の`1`は使用参照数で、接続機器の台数ではありません。この出力だけではRTL-SDRの占有までは断定できませんが、`rtl_test`の`Kernel driver is active, or device is claimed by second instance of librtlsdr.`という表示および`usb_claim_interface error -6`と合わせて、DVB-Tドライバとの競合が強く疑われます。以下の設定と再起動後に、他の条件を変えずに`rtl_test`が成功するかを確認します。
+
 テレビ受信用ドライバが機器を占有する場合は、観測専用機で次の設定を作ります。これはメーカーのLinux手順にも記載されています。
 
 ```bash
