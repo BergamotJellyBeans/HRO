@@ -245,7 +245,7 @@ ldd build/app/pi/hro-engine/hro-engine
 sudo install -d -o hro -g hro -m 0755 /etc/hro
 sudo install -o hro -g hro -m 0644 \
   examples/pi5/config.ini.example /etc/hro/config.ini
-sudoedit /etc/hro/config.ini
+sudo nano /etc/hro/config.ini
 ```
 
 観測者、場所、座標、アンテナ、ファイル接頭辞を変更します。`frequency_hz=53372000`は53.372 MHz、`sdr_gain=402`は40.2 dBです。設定の詳細は[設定・共有の手順](Pi5_Setup.md)を参照してください。
