@@ -327,6 +327,21 @@ sudo -u hro test -w /mnt/hro/observations && echo '保存先への書き込み�
 
 この手順の動作確認対象はPNG・JSON保存です。仕様書にある`.hro`保存については、対応実装の公開状態と使用する版を確認してから追加します。仕様書があることだけでは、その機能が公開ソースで動くとは判断できません。
 
+### 公開ソースの旧保存先との互換設定
+
+> **旧版向けの参考情報：** 2026年10月11日の保存先統一修正（[コミット `d46808a`](https://github.com/BergamotJellyBeans/HRO/commit/d46808a8fad6ab20f7875677d5bba23c7ec37117)）を含むソースからビルドする場合、以下の互換リンク設定は適用不要です。保存・参照先は`/mnt/hro/observations`に統一されています。ビルド日ではなく、修正コミットを含む版かどうかで判断してください。
+
+この手順を作成した時点の公開ソースでは、hro-pngとArchive Viewerに`/mnt/hro/png`が残っています。実際の保存領域を`/mnt/hro/observations`へ統一するには、新規構築で`png`が存在しない場合、互換リンクを作ります。
+
+```bash
+# /mnt/hro/png が存在しない新規環境だけで実行
+sudo ln -s /mnt/hro/observations /mnt/hro/png
+readlink -f /mnt/hro/png
+sudo -u hro test -w /mnt/hro/observations
+```
+
+既存の`png`ディレクトリがある場合は、上のリンク作成を実行せず、停止中にデータ移行方法を確認してください。既存のファイルを上書き・削除する手順にはしていません。
+
 ## 8. ブラウザ操作用の制御スクリプト
 
 ```bash
