@@ -18,6 +18,8 @@ namespace stick {
 namespace {
 M5GFX lcd;
 bool ready = false;
+bool count_drawn = false;
+std::uint32_t drawn_count = 0;
 constexpr const char* tag = "stick_display";
 
 char battery_text[8] = "--%";
@@ -56,7 +58,7 @@ bool display_begin(const char* stick_id)
         return false;
     }
     lcd.setRotation(0); // portrait 135 x 240
-    lcd.setBrightness(128);
+    lcd.setBrightness(32);
     lcd.fillScreen(0x000000U);
     lcd.setTextColor(0xFFFFFFU, 0x000000U);
     lcd.setTextSize(1);
@@ -87,6 +89,7 @@ void display_network(const NetworkView& view)
 {
     if (!ready) return;
     lcd.fillRect(0, 100, lcd.width(), 126, 0x000000U);
+    count_drawn = false;
     lcd.setCursor(6, 101);
     lcd.setTextWrap(false);
     lcd.print(view.status);
@@ -117,6 +120,10 @@ void display_network(const NetworkView& view)
 void display_press_count()
 {
     if (!ready || network_view().selection_mode) return;
+    const auto count = button_press_count();
+    if (count_drawn && drawn_count == count) return;
+    drawn_count = count;
+    count_drawn = true;
     lcd.fillRect(0, 160, lcd.width(), 66, 0x000000U);
     char text[16];
     std::snprintf(text, sizeof(text), "%lu", static_cast<unsigned long>(button_press_count()));
@@ -139,6 +146,15 @@ void display_runtime()
 {
     if (!ready) return;
     update_battery();
+    static bool shown_test = false;
+    if (shown_test != test_running()) {
+        shown_test = test_running();
+        lcd.fillRect(85, 19, 50, 9, 0x000000U);
+        if (shown_test) {
+            lcd.setCursor(87, 19);
+            lcd.print("TEST60s");
+        }
+    }
     if (!network_view().selection_mode) {
         lcd.fillRect(0, 113, lcd.width(), 12, 0x000000U);
         lcd.setCursor(6, 113); lcd.print(visual_status());

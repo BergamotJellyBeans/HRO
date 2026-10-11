@@ -8,6 +8,7 @@
 #include "stick_led.hpp"
 #include "esp_timer.h"
 #include "esp_system.h"
+#include "esp_pm.h"
 #include "esp_heap_caps.h"
 
 #include <cstdint>
@@ -20,6 +21,7 @@
 namespace stick {
 namespace {
 std::uint32_t presses = 0;
+bool minute_test = false;
 const char* reset_name(esp_reset_reason_t reason) {
     switch (reason) {
         case ESP_RST_POWERON: return "power-on";
@@ -36,10 +38,17 @@ const char* reset_name(esp_reset_reason_t reason) {
     }
 }
 }
+bool test_running() { return minute_test; }
 std::uint32_t button_press_count() { return presses; }
 void run()
 {
     constexpr const char* tag = "sticks3_hro";
+    // Keep APB at 80MHz for the existing LGFX peripheral timings. Wi-Fi
+    // requests maximum CPU speed when required; idle CPU can run at 80MHz.
+    const esp_pm_config_t power_config{160, 80, false};
+    const auto power_result = esp_pm_configure(&power_config);
+    ESP_LOGI(tag, "CPU power saving 80-160MHz, light sleep off: %s",
+        esp_err_to_name(power_result));
     const auto reason = esp_reset_reason();
     ESP_LOGW(tag, "Boot reset reason=%s (%d)", reset_name(reason), static_cast<int>(reason));
     std::uint8_t mac[6] = {};
@@ -69,6 +78,8 @@ void run()
     std::uint32_t previous_seconds = 0;
     std::uint8_t pending_buttons = 0;
     bool was_connected = false;
+    constexpr std::int64_t test_interval_us = 60000000;
+    std::int64_t next_test_event = 0;
     const auto started_at = esp_timer_get_time();
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -79,11 +90,25 @@ void run()
         was_connected = connected;
         if (network_view().selection_mode) pending_buttons |= events;
         else {
+            if (events & 2) {
+                minute_test = !minute_test && connected;
+                next_test_event = esp_timer_get_time() + test_interval_us;
+                ESP_LOGI(tag, "60-second VISUAL test %s", minute_test ? "started" : "stopped");
+            }
             if (events & 1) {
                 if (presses < UINT32_MAX) ++presses;
                 display_press_count();
                 visual_send(network_view(), stick_id, 1);
             }
+        }
+        if (minute_test && !connected) {
+            minute_test = false;
+            ESP_LOGW(tag, "60-second VISUAL test stopped: disconnected");
+        }
+        const auto now = esp_timer_get_time();
+        if (minute_test && now >= next_test_event) {
+            visual_send(network_view(), stick_id, 1);
+            next_test_event += ((now - next_test_event) / test_interval_us + 1) * test_interval_us;
         }
         // Act on release: a two-button rescan gesture must not save by accident.
         if (network_view().selection_mode && pending_buttons && buttons_held() == 0) {

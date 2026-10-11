@@ -80,7 +80,7 @@ void play_pattern(const Tone& tone) {
             int16_t sample = 0;
             if (n < frames) {
                 const float fade = std::fmin(1.0f, std::fmin(n / 55.0f, (frames - 1 - n) / 55.0f));
-                sample = static_cast<int16_t>(8000 * fade * std::sin(6.2831853f * frequency * n / 22050));
+                sample = static_cast<int16_t>(4000 * fade * std::sin(6.2831853f * frequency * n / 22050));
             }
             samples[2*i] = samples[2*i+1] = sample;
         }

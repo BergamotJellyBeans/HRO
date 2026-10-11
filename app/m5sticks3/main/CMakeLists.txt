@@ -3,5 +3,5 @@ idf_component_register(
     INCLUDE_DIRS "../include"
     PRIV_INCLUDE_DIRS "../../../core/include"
     EMBED_FILES "../assets/hro_logo.png"
-    PRIV_REQUIRES esp_hw_support log freertos esp_driver_gpio esp_driver_i2s esp_timer esp_wifi esp_event esp_netif nvs_flash lwip m5stack__m5gfx
+    PRIV_REQUIRES esp_pm esp_hw_support log freertos esp_driver_gpio esp_driver_i2s esp_timer esp_wifi esp_event esp_netif nvs_flash lwip m5stack__m5gfx
 )
