@@ -225,10 +225,21 @@ dvb_usb_rtl28xxu       49152  1
 ```bash
 printf '%s\n' 'blacklist dvb_usb_rtl28xxu' | \
   sudo tee /etc/modprobe.d/hro-rtl-sdr.conf
+```
+
+`blacklist dvb_usb_rtl28xxu`が表示され、エラーがないことを確認します。ブラックリストは既にロードされたドライバを直ちに解除するものではありません。設定後、次のコマンドで再起動します。SSH接続は切断されます。
+
+```bash
 sudo reboot
 ```
 
-再接続後、`rtl_test`を実行します。ブラックリストは既にロードされたドライバを直ちに解除するものではありません。
+Pi5の起動後、SSHで再接続して、`rtl_test`を実行します。
+
+```bash
+sudo -u hro /usr/local/bin/rtl_test -s 960000
+```
+
+テストが動き始めたら、Ctrl+Cで終了します。
 
 | 症状 | 確認する点 |
 | --- | --- |
