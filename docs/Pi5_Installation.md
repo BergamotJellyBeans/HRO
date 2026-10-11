@@ -72,6 +72,7 @@ sudoedit /etc/fstab
 [設定例](../examples/pi5/fstab.example)を参考に、実際のext4パーティションのUUIDでマウント行を追加します。既存のOSの行は残します。
 
 ```bash
+sudo systemctl daemon-reload
 sudo mount /mnt/hro
 findmnt /mnt/hro
 ```
