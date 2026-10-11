@@ -6,7 +6,7 @@ Raspberry Pi 5で受信・表示・PNG保存までを構築する手順です。
 
 ## 1. 準備するものとネットワーク
 
-- Raspberry Pi 5、電源、冷却装置
+- Raspberry Pi 5、電源、アクティブクーラー
 - Raspberry Pi OS Desktop 64-bit
 - NVMe SSDと対応する接続機器
 - RTL-SDR Blog V4、53.372 MHz受信用アンテナ
