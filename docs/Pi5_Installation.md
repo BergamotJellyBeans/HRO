@@ -199,6 +199,15 @@ sudo -u hro /usr/local/bin/rtl_test -s 960000
 
 ### DVB-Tドライバ競合への対処
 
+`rtl_test`で次のエラーが出た場合、`-6`はUSBインターフェースが使用中であることを示します。DVB-T用のカーネルドライバ、または別のSDRプログラム（`hro-engine`など）が機器を占有している可能性があります。このエラーだけでは、どちらが原因かは確定できません。
+
+```text
+usb_claim_interface error -6
+Failed to open rtlsdr device #0.
+```
+
+まず、次のコマンドでDVB-Tドライバがロードされているか確認します。
+
 ```bash
 lsmod | grep -E 'dvb_usb_rtl28xxu|rtl2832'
 ```
