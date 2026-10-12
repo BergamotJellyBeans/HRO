@@ -95,6 +95,7 @@ sudo install -d -o "$USER" -g "$(id -gn)" -m 0755 /mnt/hro/development
 
 ## 3. 必要なパッケージ
 
+Pi5-HROに必要なパッケージをインストールします。
 ```bash
 sudo apt update
 sudo apt install -y \
