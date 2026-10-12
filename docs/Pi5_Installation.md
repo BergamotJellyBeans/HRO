@@ -345,8 +345,14 @@ sudo nano /etc/hro/config.ini
 hro-pngのPNG・JSON保存先とArchive Viewerの参照先は、`/mnt/hro/observations`です。第2節で作成した保存先に、実行ユーザーが書き込めることを確認します。
 
 ```bash
-sudo -u hro test -w /mnt/hro/observations && echo '保存先への書き込み権限あり'
+if sudo -u hro test -w /mnt/hro/observations; then
+  echo 'OK: hro can write to /mnt/hro/observations'
+else
+  echo 'ERROR: Write permission check failed for /mnt/hro/observations'
+fi
 ```
+
+`OK`が表示されれば確認成功です。`ERROR`が表示された場合は、保存先の存在と`hro`ユーザーの書き込み権限を確認してから次へ進みます。このコマンドは確認だけを行い、ファイルは作成しません。
 
 この手順の動作確認対象はPNG・JSON保存です。仕様書にある`.hro`保存については、対応実装の公開状態と使用する版を確認してから追加します。仕様書があることだけでは、その機能が公開ソースで動くとは判断できません。
 
