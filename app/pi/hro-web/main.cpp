@@ -1237,6 +1237,34 @@ int main()
             }).detach();
         });
 
+
+    server.Get("/api/device", [](const httplib::Request&, httplib::Response& res) {
+        std::ifstream input("/sys/class/net/eth0/address");
+        std::string mac;
+        std::getline(input, mac);
+        const std::string hex = "0123456789abcdef";
+        bool valid = mac.size() == 17;
+        for (std::size_t i = 0; valid && i < mac.size(); ++i) {
+            if (i == 2 || i == 5 || i == 8 || i == 11 || i == 14)
+                valid = mac[i] == ':';
+            else
+                valid = hex.find(mac[i]) != std::string::npos;
+        }
+        if (!valid || mac == "00:00:00:00:00:00") {
+            res.status = 503;
+            res.set_content(json{{"error", "Ethernet MAC unavailable"}}.dump(),
+                            "application/json");
+            return;
+        }
+        std::string suffix;
+        for (const auto i : {9, 10, 12, 13, 15, 16}) {
+            const auto digit = hex.find(mac[i]);
+            suffix += "0123456789ABCDEF"[digit];
+        }
+        res.set_content(json{{"device_name", "Pi5-HRO-" + suffix}}.dump(),
+                        "application/json");
+    });
+
     server.Get("/api/display", [](const httplib::Request&, httplib::Response& res) {
         std::lock_guard<std::mutex> lock(configMutex);
         HroConfig config;

@@ -686,6 +686,8 @@ function drawStaticLayer()
     drawLevelScale();
 }
 
+let deviceName = 'Pi5-HRO-UNKNOWN';
+
 function drawSystemInfo()
 {
     ctx.textAlign = 'left';
@@ -695,7 +697,7 @@ function drawSystemInfo()
     ctx.fillStyle = '#20dff3';
 
     ctx.fillText(
-        'Pi5-HRO   v0.1   Raspberry Pi 5 + RTL-SDR',
+        `${deviceName}   v0.1   Raspberry Pi 5 + RTL-SDR`,
         10,
         695
     );
@@ -1034,6 +1036,18 @@ baseImage.onload = async () =>
     try
     {
         await loadConfig();
+        try {
+            const deviceResponse = await fetch('/api/device');
+            if (!deviceResponse.ok)
+                throw new Error('Device identification unavailable');
+            const device = await deviceResponse.json();
+            if (!/^Pi5-HRO-[0-9A-F]{6}$/.test(device.device_name))
+                throw new Error('Invalid device identification');
+            deviceName = device.device_name;
+        } catch (error) {
+            console.warn(error);
+        }
+
         const displayResponse = await fetch('/api/display');
         if (!displayResponse.ok) throw new Error('Failed to load Display Level');
         displayLevel = (await displayResponse.json()).level_db;
