@@ -33,33 +33,7 @@ hostname -I
 
 `uname -m`は64-bit環境で`aarch64`になります。
 
-## 2. 必要なパッケージ
-
-```bash
-sudo apt update
-sudo apt install -y \
-  build-essential cmake ninja-build git gdb pkg-config \
-  libusb-1.0-0-dev libcairo2-dev libcpp-httplib-dev \
-  libwebsocketpp-dev libboost-system-dev nlohmann-json3-dev \
-  samba usbutils fonts-dejavu-core
-```
-
-| パッケージ | 用途 |
-| --- | --- |
-| build-essential / cmake / ninja-build | C++のコンパイルとビルド手順の生成・実行 |
-| git / gdb / pkg-config | ソース管理、デバッグ、ライブラリ設定の取得 |
-| libusb-1.0-0-dev | RTL-SDRライブラリをビルドするためのUSBライブラリ |
-| libcairo2-dev | hro-pngによる画像生成 |
-| libcpp-httplib-dev | HTTPサーバ |
-| libwebsocketpp-dev / libboost-system-dev | LIVEデータと音声を送るWebSocket |
-| nlohmann-json3-dev | 設定・状態などのJSON処理 |
-| samba | Mac・Windowsからのファイル共有 |
-| usbutils | USB機器の確認 |
-| fonts-dejavu-core | PNGの文字描画用フォント |
-
-依存関係は公開ソースのCMake定義とincludeから整理しました。OSの版によるパッケージ名・ビルド差異は実機検証で確認してください。
-
-## 3. NVMeのマウントと実行ユーザー
+## 2. NVMeのマウントと実行ユーザー
 
 NVMeを`/mnt/hro`にマウントします。既存データを消すフォーマット操作はこの手順には含みません。
 
@@ -118,6 +92,32 @@ sudo install -d -o "$USER" -g "$(id -gn)" -m 0755 /mnt/hro/development
 └── observations/        観測記録、SMB共有先
 /etc/hro/config.ini      観測設定
 ```
+
+## 3. 必要なパッケージ
+
+```bash
+sudo apt update
+sudo apt install -y \
+  build-essential cmake ninja-build git gdb pkg-config \
+  libusb-1.0-0-dev libcairo2-dev libcpp-httplib-dev \
+  libwebsocketpp-dev libboost-system-dev nlohmann-json3-dev \
+  samba usbutils fonts-dejavu-core
+```
+
+| パッケージ | 用途 |
+| --- | --- |
+| build-essential / cmake / ninja-build | C++のコンパイルとビルド手順の生成・実行 |
+| git / gdb / pkg-config | ソース管理、デバッグ、ライブラリ設定の取得 |
+| libusb-1.0-0-dev | RTL-SDRライブラリをビルドするためのUSBライブラリ |
+| libcairo2-dev | hro-pngによる画像生成 |
+| libcpp-httplib-dev | HTTPサーバ |
+| libwebsocketpp-dev / libboost-system-dev | LIVEデータと音声を送るWebSocket |
+| nlohmann-json3-dev | 設定・状態などのJSON処理 |
+| samba | Mac・Windowsからのファイル共有 |
+| usbutils | USB機器の確認 |
+| fonts-dejavu-core | PNGの文字描画用フォント |
+
+依存関係は公開ソースのCMake定義とincludeから整理しました。OSの版によるパッケージ名・ビルド差異は実機検証で確認してください。
 
 ## 4. 正確な時刻を得るためのNTP
 
@@ -341,7 +341,7 @@ sudo nano /etc/hro/config.ini
 
 ### 保存先の確認
 
-hro-pngのPNG・JSON保存先とArchive Viewerの参照先は、`/mnt/hro/observations`です。第3節で作成した保存先に、実行ユーザーが書き込めることを確認します。
+hro-pngのPNG・JSON保存先とArchive Viewerの参照先は、`/mnt/hro/observations`です。第2節で作成した保存先に、実行ユーザーが書き込めることを確認します。
 
 ```bash
 sudo -u hro test -w /mnt/hro/observations && echo '保存先への書き込み権限あり'
