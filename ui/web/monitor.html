@@ -466,7 +466,7 @@ async function pollMonitorStatus()
 }
 setInterval(() => {
     if (lastDataAt && Date.now() - lastDataAt > 3000 && !dataInterrupted) {
-        dataInterrupted = true; consoleMessage('Observation data interrupted', 'warning');
+        dataInterrupted = true; consoleMessage('Live display data delayed', 'warning');
     }
 }, 1000);
 
@@ -523,7 +523,7 @@ function connectLiveWebSocket()
             }
 
 
-            if (!lastDataAt || dataInterrupted) consoleMessage(lastDataAt ? 'Observation data resumed' : 'Observation data receiving');
+            if (!lastDataAt || dataInterrupted) consoleMessage(lastDataAt ? 'Live display data resumed' : 'Observation data receiving');
             lastDataAt = Date.now(); dataInterrupted = false;
             if (Number.isFinite(message.timestamp) && message.timestamp >= 946684800000 && message.timestamp < 4102444800000)
                 observationTimeMs = message.timestamp;
