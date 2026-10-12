@@ -209,7 +209,7 @@ sudo usermod -aG plugdev hro
 sudo udevadm control --reload-rules
 ```
 
-すでにRTL-SDRがUSBポートに取り付けている場合は、USBポートから一旦抜いて挿し直してください。
+すでにRTL-SDRをUSBポートに取り付けている場合は、USBポートから一旦抜いて挿し直してください。
 まだUSBポートにRTL-SDRを取り付けていたい場合は、ここでUSBポートに取り付けてください。
 SSHを再接続してグループ変更を反映します。サービス起動後にグループを追加した場合はサービスの再起動も必要です。
 
