@@ -449,6 +449,12 @@ HTTPはTCP 8080、LIVEのWebSocketはTCP 8081、音声はTCP 8082を使います
 [SMB設定例](../examples/pi5/smb.conf.example)を`/etc/samba/smb.conf`へ追加します。全体を置き換えず、既存の設定を残します。
 
 ```bash
+sudo nano /etc/samba/smb.conf
+```
+
+設定例を追記し、保存してnanoを終了したら、次を実行します。
+
+```bash
 sudo smbpasswd -a hro
 sudo testparm -s
 sudo systemctl enable --now smbd
