@@ -273,8 +273,6 @@ sudo -u hro /usr/local/bin/rtl_test -s 960000
 | Device busy / claim interface失敗 | DVB-Tドライバ、別のSDRプログラム、hro-engineの稼働 |
 | 開けるが受信がおかしい | V4対応ライブラリ、リンク先、アンテナ、周波数・Gain |
 
-TODO（実機記録）：実際に導入したライブラリのコミットと、競合対処が必要だったかを追記する。
-
 参考：[RTL-SDR Blog V4公式ガイド](https://www.rtl-sdr.com/V4/)、[Osmocomのudevルール](https://github.com/osmocom/rtl-sdr/blob/master/rtl-sdr.rules)。
 
 ## 6. HROの取得とビルド
