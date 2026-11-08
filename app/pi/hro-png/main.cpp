@@ -1,6 +1,8 @@
-#include <cairo/cairo.h>
+#include <cairo.h>
 
 #include "hro_config.h"
+#include <csignal>
+#include <cerrno>
 #include "hro_fft_config.h"
 #include "hro_version.h"
 
@@ -24,6 +26,8 @@
 #include <cstdio>
 
 namespace {
+volatile std::sig_atomic_t stopRequested = 0;
+void requestStop(int) { stopRequested = 1; }
 
 constexpr int WIDTH  = 1280;
 constexpr int HEIGHT = 480;
@@ -1383,6 +1387,9 @@ int main()
     }
 
 
+    std::signal(SIGTERM, requestStop);
+    std::signal(SIGINT, requestStop);
+
     // --------------------------------------------------------
     // UDP socket
     // --------------------------------------------------------
@@ -1434,6 +1441,9 @@ int main()
     }
 
 
+    timeval receiveTimeout{1, 0};
+    ::setsockopt(udpSocket, SOL_SOCKET, SO_RCVTIMEO, &receiveTimeout, sizeof receiveTimeout);
+
     std::cout
         << "HRO PNG receiver\n"
         << "UDP port : "
@@ -1465,7 +1475,7 @@ int main()
     // Receive forever
     // --------------------------------------------------------
 
-    while (true)
+    while (!stopRequested)
     {
         const ssize_t received =
             ::recvfrom(
@@ -1479,6 +1489,7 @@ int main()
 
         if (received < 0)
         {
+            if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) continue;
             std::cerr
                 << "WARNING: UDP receive failed\n";
 

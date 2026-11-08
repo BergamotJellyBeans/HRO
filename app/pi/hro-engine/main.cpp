@@ -8,6 +8,8 @@
 #include "dsp/resampler_16_125.h"
 #include "dsp/hann_window.h"
 #include "dsp/complex_fft.h"
+#include "hourly_hro.hpp"
+#include <array>
 
 #include <cstdint>
 #include <iostream>
@@ -187,6 +189,8 @@ int main()
         << "Sample rate : " << SAMPLE_RATE << " Hz\n"
         << "Frequency   : " << config.frequency_hz << " Hz\n";
 
+    hro::pi::HourlyHroRecorder hroRecorder("/mnt/hro/observations", config);
+    bool recordingFailed = false;
     RtlSdrSource sdr;
 
     if (!sdr.open())
@@ -639,7 +643,7 @@ int main()
 #endif
                 writeUint64BE(
                     livePacket.data() + 8,
-                    liveSequence++);
+                    liveSequence);
 
                 const auto now =
                     std::chrono::system_clock::now();
@@ -648,6 +652,18 @@ int main()
                     std::chrono::duration_cast<std::chrono::milliseconds>(
                         now.time_since_epoch()
                     ).count();
+
+                std::array<float, hro::BIN_COUNT> savedBins{};
+                std::copy(displayDb.begin(), displayDb.end(), savedBins.begin());
+                if (!hroRecorder.record(timestampMs, liveSequence, savedBins)) {
+                    std::cerr << "ERROR: HRO recording failed, sequence=" << liveSequence
+                              << "; stopping acquisition to avoid silent data loss\n";
+                    recordingFailed = true;
+                    g_stopRequested = true;
+                    acquisitionRunning = false;
+                    break;
+                }
+                ++liveSequence;
 
                 writeUint64BE(
                     livePacket.data() + 16,
@@ -729,5 +745,6 @@ int main()
 
     std::cout << "HRO engine stopped.\n";
 
-    return 0;
+    if (!hroRecorder.stop()) recordingFailed = true;
+    return recordingFailed ? 1 : 0;
 }

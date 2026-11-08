@@ -17,18 +17,20 @@ Configuration examples based on the running Pi5 station are available in
 [`examples/pi5/`](examples/pi5/). Replace observer details and the SSD UUID
 before use. The Samba and fstab examples are fragments, not complete replacements.
 
-## HRO File Format Specification
+## HRO recording and Archive Viewer
 
-[日本語：HROファイル形式仕様書 第3版](docs/HRO_File_Format_Specification.md) |
-[English: HRO File Format Specification, Third Edition](docs/HRO_File_Format_Specification_EN.md)
+Pi5のhro-engineは、生成したFFT（中心周波数±300 Hzの601点）を生成順に保存します。
+各レコードはUnix時刻（ミリ秒）とシーケンスを持ちます。同じ秒のFFTも保持します。
+PNG・JSON保存はhro-pngが担当します。
 
-HRO File Version 2のドラフト仕様です。1時間分のFFTデータと観測条件を、
-UTF-8 JSONヘッダ、Validity Map、Event Map、FFT Dataに格納します。
-仕様書の版とファイル形式のVersionは別の番号です。
+- [HRO記録・導入と確認](app/pi/hro-png/HRO_RECORDING.md)
+- [Archive Viewerの操作・反映手順](docs/Archive_Viewer.md)
+- [日本語：HRO v2連続レコードと旧秒スロット形式](docs/HRO_File_Format_Specification.md)
+- [English: sequential records and legacy format](docs/HRO_File_Format_Specification_EN.md)
 
-Draft specification for HRO File Version 2. Each file stores one hour of FFT
-data and observation metadata. Document edition and file format version
-are separate identifiers.
+The archive viewer displays partial PNG observations, legacy HRO files and sequential FFT records,
+including complete records in temporary files. Recording and viewer tests have passed on Pi5;
+long-duration operation is currently under observation. The existing directory layout is retained.
 
 ## Project Goals
 
@@ -77,3 +79,4 @@ Raspberry Pi 5
    +-- Tab5 Remote Monitor
    |
    +-- Future AI Analysis
+```

@@ -31,14 +31,8 @@ public:
     // slot corresponding to the current observation time.
     bool resume(const std::string& tempPath);
 
-    // Write the complete HRO v1 header from observation metadata.
+    // Write the complete HRO v2 header from observation metadata.
     bool writeHeader(const HroMetadata& metadata);
-
-    // Write one 80-byte header card.
-    bool writeHeaderCard(const std::string& card);
-
-    // Finish the header and prepare the binary areas.
-    bool finishHeader();
 
     // Write one spectrum record to the specified one-second slot.
     bool writeSpectrum(std::size_t slot,
@@ -52,6 +46,9 @@ public:
     bool close();
 
     bool isOpen() const;
+    bool flush();
+    bool noteTimeConflict();
+    bool hasSpectrum(std::size_t slot);
 
 private:
     bool setValidity(std::size_t slot);
@@ -61,7 +58,6 @@ private:
     std::string finalPath_;
     std::string tempPath_;
 
-    std::size_t headerCardCount_ = 0;
 
     bool headerFinished_ = false;
     bool open_ = false;

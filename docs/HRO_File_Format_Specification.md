@@ -1,3 +1,43 @@
+# HRO v2 連続FFTレコード形式（2026-11-07）
+
+新規保存は `RECORD_LAYOUT="SEQUENTIAL_FFT_V1"` を使う。
+HRO_FILE_VERSIONは2を維持し、レイアウト識別子で既存形式と区別する。
+以下の旧仕様はRECORD_LAYOUTのない既存ファイルにのみ適用する。
+
+先頭8192 bytesは従来どおりUTF-8 JSON＋NULパディング。
+DATA_OFFSET=8192、RECORD_SIZE=2420。
+VALIDITY_MAP_SIZE、EVENT_MAP_SIZE、RECORD_SLOTS、RECORD_INTERVAL_SECはすべて0。
+RECORD_FIELDSは["TIMESTAMP_MS_INT64","SEQUENCE_UINT64","FFT_FLOAT32"]。
+ヘッダ後に以下のレコードを生成順で追記する。サイズは8192＋2420×レコード数。
+
+| レコード内offset | little endianの型 | 内容 |
+|---|---|---|
+| 0 | int64 | FFT生成後のUnix時刻ミリ秒 |
+| 8 | uint64 | engine起動時0、FFTごとに1増加するシーケンス |
+| 16 | float32×601 | 中心±300 Hz、低周波→高周波のFFT dB値 |
+
+同一秒・同一ミリ秒・時刻後退でも省略しない。表示レベル補正なし。
+時刻は取得開始時刻ではなく、FFT生成後のシステム時計である。
+シーケンスはengine再起動時にリセットする。再起動ごとに別ファイルを使う。
+
+保存先 `/mnt/hro/observations/YYYY/YYYYMM/YYYYMMDD/` は維持する。
+JST名 `PREFIXYYYYMMDDHH00.hro.tmp` に記録し、時間帯変更・正常停止で.hroに確定する。
+同名の.hro／.tmpがあれば.part1.hro、.part2.hro…を使い、既存を変更しない。
+時計が前の時間帯へ戻った場合も新セグメントを作る。
+ファイル内は物理順、同一起動中のファイル間はシーケンスが生成順を示す。
+ファイル名の時計順だけで生成順を判断しない。
+
+異常停止の.tmpは自動追記・上書きしない。途中で切れた末尾レコードは
+読み取りツールがエラーにする。原本を保持して復旧を検討する。
+各FFTでflushするがfsyncではなく、停電時の永続化は保証しない。
+保存失敗時はengineがエラー終了する。既存systemd設定ではon-failure再起動となる。
+SDR取得や生データキューのオーバーフローによるFFT生成前の欠損は別問題。
+
+新形式は更新済みtools/read_hro.pyの--record N（0開始）で読む。
+旧形式は--second Nで引き続き読める。旧読み取りツールは新形式に対応しない。
+
+---
+
 # HRO File Format Specification — 第3版
 
 日本語 | [English](HRO_File_Format_Specification_EN.md)

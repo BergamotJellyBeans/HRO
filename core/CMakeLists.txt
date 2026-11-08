@@ -15,3 +15,10 @@ target_include_directories(hro_core
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+
+# Already used by hro-web; JSON metadata parsing is also needed by the HRO writer.
+find_path(HRO_JSON_INCLUDE_DIR nlohmann/json.hpp)
+if(NOT HRO_JSON_INCLUDE_DIR)
+    message(FATAL_ERROR "nlohmann/json.hpp is required (Pi: nlohmann-json3-dev)")
+endif()
+target_include_directories(hro_core PRIVATE ${HRO_JSON_INCLUDE_DIR})

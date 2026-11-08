@@ -87,8 +87,11 @@ h1 {
     color: #66ff88;
     text-decoration: underline;
     cursor: pointer;
+    background: none; border: 0; padding: 0; font-size: inherit;
 }
 
+.archive-time.partial { color: #ffcd70; }
+.archive-time.metadata-error { color: #ff9c9c; }
 .archive-time:hover {
     color: #ffffff;
 }
@@ -118,6 +121,7 @@ h1 {
     font-size: 13px;
     line-height: 18px;
     color: #cccccc;
+    white-space: pre-wrap;
 }
 
 #navigation {
@@ -147,6 +151,18 @@ h1 {
 a {
     color: #00dfff;
 }
+#viewMode { padding: 8px; }
+#viewMode button { padding: 8px 20px; margin: 0 5px; }
+#viewMode button[aria-pressed="true"] { background: #00dfff; color: #000; }
+#hroView { width: min(1280px, 96vw); margin: auto; text-align: left; }
+#hroView[hidden], #pngView[hidden] { display: none; }
+#hroControls { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; align-items: center; }
+#hroFile { max-width: min(760px, 90vw); }
+#hroCanvas, #spectrumCanvas { width: 100%; height: auto; background: #080d18; }
+#hroView button, #hroView select { padding: 7px; }
+#recordSlider { width: min(700px, 90%); }
+#hroStatus, #recordDetails { white-space: pre-wrap; line-height: 1.6; color: #ddd; }
+#hroView p { color: #bbb; }
 </style>
 </head>
 
@@ -157,6 +173,26 @@ a {
     <a href="/monitor">LIVE Monitor</a>
 </header>
 
+<nav id="viewMode" aria-label="Archive display">
+<button id="pngMode" aria-pressed="true">PNG / JSON</button>
+<button id="hroMode" aria-pressed="false">HRO / FFT</button>
+</nav>
+<section id="hroView" hidden>
+<h2>HRO / FFT</h2>
+<div id="hroControls">
+<label>File <select id="hroFile"></select></label>
+<button id="hroRefresh">Refresh</button>
+<button id="hroPrevious">◀ Previous records</button>
+<button id="hroNext">Next records ▶</button>
+</div>
+<div id="hroStatus" role="status">Select HRO / FFT to load files.</div>
+<p>Times are JST. Recording and partial files are available. Each column is one FFT in generation order; missing legacy slots are blank.</p>
+<canvas id="hroCanvas" width="1280" height="380" aria-label="FFT waterfall in generation order"></canvas>
+<label>FFT record <input id="recordSlider" type="range" min="0" max="0" value="0" disabled></label>
+<div id="recordDetails"></div>
+<canvas id="spectrumCanvas" width="1280" height="230" aria-label="Selected FFT spectrum"></canvas>
+</section>
+<section id="pngView">
 <div id="selectors">
     <label>
         Date
@@ -186,9 +222,16 @@ a {
     <div id="archiveLinks"></div>
 </div>
 
+</section>
 <script>
 let archiveList = [];
 let currentIndex = -1;
+let metadataRequest = 0;
+function qualityLabel(item) {
+    if (item.quality === "partial") return `Partial ${item.received_seconds}/${item.expected_seconds}s`;
+    if (item.quality === "metadata_error") return "Metadata unavailable";
+    return "";
+}
 
 
 function parseArchiveFilename(filename)
@@ -275,7 +318,7 @@ function populateTimes(dateKey, selectedIndex = -1)
             String(i);
 
         option.textContent =
-            info.timeLabel;
+            info.timeLabel + (qualityLabel(archiveList[i]) ? " · " + qualityLabel(archiveList[i]) : "");
 
         if (i === selectedIndex)
             option.selected = true;
@@ -339,11 +382,15 @@ function showArchive(index)
         archiveList[currentIndex];
 
     document.getElementById('status').textContent =
-        item.png_file;
+        item.png_file + (qualityLabel(item) ? " · " + qualityLabel(item) : "");
 
-    document.getElementById('archiveImage').src =
-        '/archive/image/' +
-        encodeURIComponent(item.png_file);
+    const image = document.getElementById('archiveImage');
+    image.style.visibility = 'hidden';
+    image.onload = () => { image.style.visibility = 'visible'; };
+    image.onerror = () => {
+        document.getElementById('status').textContent = item.png_file + ' · Image unavailable';
+    };
+    image.src = '/archive/image/' + encodeURIComponent(item.png_file);
 
     loadMetadata(item);
 
@@ -453,10 +500,13 @@ function buildArchiveLinks()
                 if (entry)
                 {
                     const link =
-                        document.createElement('span');
+                        document.createElement('button');
+                    link.type = 'button';
 
                     link.className =
-                        'archive-time';
+                        'archive-time' + (archiveList[entry.index].quality === 'partial' ? ' partial' : '') +
+                        (archiveList[entry.index].quality === 'metadata_error' ? ' metadata-error' : '');
+                    link.title = qualityLabel(archiveList[entry.index]) || 'Open observation';
 
                     link.textContent =
                         entry.timeLabel;
@@ -522,7 +572,7 @@ async function loadArchive()
         populateDates();
         buildArchiveLinks();
 
-        // 最新の完成済み観測を表示
+        // Include partial observations, selecting the latest available image.
         showArchive(
             archiveList.length - 1);
     }
@@ -537,8 +587,10 @@ async function loadArchive()
 
 async function loadMetadata(item)
 {
+    const request = ++metadataRequest;
     const metadata =
         document.getElementById('metadata');
+    metadata.textContent = 'Metadata: loading...';
 
     if (!item.json_exists)
     {
@@ -561,6 +613,7 @@ async function loadMetadata(item)
         const data =
             await response.json();
 
+        if (request !== metadataRequest) return;
         const frequencyMHz =
             (data.receiver.frequency_hz / 1000000)
                 .toFixed(6);
@@ -570,27 +623,21 @@ async function loadMetadata(item)
                 .replace('T', ' ')
                 .substring(0, 19);
 
-        metadata.innerHTML =
-            `Station: ${data.station.observer}` +
-            ` &nbsp;&nbsp; Location: ${data.station.location}` +
-            ` &nbsp;&nbsp; Receiver: ${data.receiver.model}` +
-            ` &nbsp;&nbsp; Gain: ${Number(data.receiver.gain_db).toFixed(1)}dB<br>` +
-            `Antenna: ${data.receiver.antenna}` +
-            ` &nbsp;&nbsp; Frequency: ${frequencyMHz} MHz<br>` +
+        metadata.textContent =
+            `Station: ${data.station.observer}   Location: ${data.station.location}   ` +
+            `Receiver: ${data.receiver.model}   Gain: ${Number(data.receiver.gain_db).toFixed(1)}dB
+` +
+            `Antenna: ${data.receiver.antenna}   Frequency: ${frequencyMHz} MHz
+` +
+            `Start: ${start}   Received: ${data.data_quality.received_seconds}/` +
+            `${data.data_quality.expected_seconds}   Missing: ${data.data_quality.missing_seconds}`;
 
-            `Start: ${start}` +
-            ` &nbsp;&nbsp; Received: ` +
-            `${data.data_quality.received_seconds}` +
-            `/${data.data_quality.expected_seconds}` +
-            ` &nbsp;&nbsp; Missing: ` +
-            `${data.data_quality.missing_seconds}`;
     }
     catch (error)
     {
         console.error(error);
 
-        metadata.textContent =
-            'Metadata: failed to load';
+        if (request === metadataRequest) metadata.textContent = 'Metadata: failed to load (image is still available)';
     }
 }
 
@@ -647,6 +694,7 @@ document.getElementById('timeSelect').onchange =
 
 loadArchive();
 </script>
+<script src="/archive/viewer.js"></script>
 
 </body>
 </html>
