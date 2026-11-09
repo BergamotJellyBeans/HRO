@@ -40,12 +40,11 @@ SDR取得や生データキューのオーバーフローによるFFT生成前�
 
 # HRO File Format Specification — 第3版
 
-日本語 | [English](HRO_File_Format_Specification_EN.md)
+仕様書改訂：第3版（2026-10-04）
 
-仕様書改訂：第3版（2026-10-04）  
 ファイル形式：HRO File Version 2
 
-第1版の501点／秒（中心780 Hz ±250 Hz）を、現在の601点／秒
+第1版の601点／秒（中心780 Hz ±250 Hz）を、現在の601点／秒
 （中心周波数 ±300 Hz）に更新した。780 Hzは設定例であり固定値ではない。
 中心周波数は観測設定で変更できる。Header、Validity Map、Event Mapの
 構造および開始位置は変更しない。
@@ -75,20 +74,20 @@ Version 2 では、1ファイルに1時間分の観測データを格納する�
 
 ## 2. 基本仕様
 
-| 項目 | 値 |
-| --- | --- |
-| HRO File Version | 2 |
-| 1ファイルの観測時間 | 3600秒（1時間） |
-| Header Size | 8192 bytes |
-| Header Encoding | UTF-8 |
-| Header Padding | 0x00 |
-| JSON Maximum Size | 8191 bytes |
-| Validity Map Size | 512 bytes |
-| Event Map Size | 3600 bytes |
-| FFT Data Type | IEEE-754 FLOAT32 |
-| Byte Order | LITTLE_ENDIAN |
-| Record Interval | 1秒 |
-| Record Slots | 3600 |
+  項目                  値
+  --------------------- ------------------
+  HRO File Version      2
+  1ファイルの観測時間   3600秒（1時間）
+  Header Size           8192 bytes
+  Header Encoding       UTF-8
+  Header Padding        0x00
+  JSON Maximum Size     8191 bytes
+  Validity Map Size     512 bytes
+  Event Map Size        3600 bytes
+  FFT Data Type         IEEE-754 FLOAT32
+  Byte Order            LITTLE_ENDIAN
+  Record Interval       1秒
+  Record Slots          3600
 
 ------------------------------------------------------------------------
 
@@ -194,7 +193,8 @@ Offset 8192              : Validity Mapの開始
 `NTP_SYNCED` はJSON boolean、それ以外の整数項目はJSON numberとする。
 緯度・経度・周波数分解能などはJSON number、名称・時刻はstringとする。
 以下の項目を必須とする。時刻同期をしていない場合の
-`NTP_SYNC_TIME_UTC` は空文字列とする。
+`NTP_SYNC_TIME_UTC` は空文字列とする。実際の同期時刻を取得できない場合も
+空文字列とし、現在時刻を同期時刻として代用しない。
 
 以下は中心780 Hzで観測した場合の例である。
 
@@ -221,8 +221,9 @@ Offset 8192              : Validity Mapの開始
   "RECEIVER": "RTL-SDR Blog V4",
   "ANTENNA": "Small Loop MK-3A",
   "RF_FREQUENCY_HZ": 53372000,
-  "SDR_LO_FREQUENCY_HZ": 53612000,
+  "SDR_LO_FREQUENCY_HZ": 53371000,
   "SDR_SAMPLE_RATE_HZ": 960000,
+  "SDR_GAIN_TENTHS_DB": 402,
   "FFT_SIZE": 8192,
   "FFT_OUTPUT_RATE_HZ": 8192,
   "FFT_RESOLUTION_HZ": 1.0,
@@ -231,6 +232,10 @@ Offset 8192              : Validity Mapの開始
   "FFT_MIN_HZ": 480,
   "FFT_MAX_HZ": 1080,
   "FFT_BIN_COUNT": 601,
+  "FFT_VALUE_SCALE": "DB_POWER",
+  "FFT_NORMALIZATION": "NONE",
+  "FFT_WINDOW": "PERIODIC_HANN",
+  "FFT_POWER_EPSILON": 1e-20,
   "RECORD_INTERVAL_SEC": 1,
   "RECORD_SLOTS": 3600,
   "DEVICE": "Raspberry Pi 5",
@@ -347,16 +352,16 @@ Event値は **bit flags** として扱う。
 
 Version 2では以下を定義する。
 
-| Bit | Value | Event | 内容 |
-| --- | --- | --- | --- |
-| bit 0 | `0x01` | VISUAL | 人間が眼視で流星を確認 |
-| bit 1 | `0x02` | Reserved | 将来拡張用 |
-| bit 2 | `0x04` | Reserved | 将来拡張用 |
-| bit 3 | `0x08` | Reserved | 将来拡張用 |
-| bit 4 | `0x10` | Reserved | 将来拡張用 |
-| bit 5 | `0x20` | Reserved | 将来拡張用 |
-| bit 6 | `0x40` | Reserved | 将来拡張用 |
-| bit 7 | `0x80` | Reserved | 将来拡張用 |
+  Bit        Value Event      内容
+  ------- -------- ---------- ------------------------
+  bit 0     `0x01` VISUAL     人間が眼視で流星を確認
+  bit 1     `0x02` Reserved   将来拡張用
+  bit 2     `0x04` Reserved   将来拡張用
+  bit 3     `0x08` Reserved   将来拡張用
+  bit 4     `0x10` Reserved   将来拡張用
+  bit 5     `0x20` Reserved   将来拡張用
+  bit 6     `0x40` Reserved   将来拡張用
+  bit 7     `0x80` Reserved   将来拡張用
 
 イベントなしは、
 
@@ -415,14 +420,26 @@ RECORD_INTERVAL_SEC=1
 RECORD_SLOTS=3600
 ```
 
-`FFT_OUTPUT_RATE_HZ` はFFT入力へ供給する信号のサンプルレートを表す。
+`FFT_OUTPUT_RATE_HZ` はFFT入力へ供給する音声のサンプルレートを表す。
 ファイルのレコード出力周期は `RECORD_INTERVAL_SEC=1` であり、
 8192レコード／秒を意味しない。
 
 保存するFFT値には、画面のDisplay Levelによる表示用補正を加えない。
-FLOAT32という型だけでは値の尺度（線形パワー、振幅、dBなど）は決まらない。
-値の尺度・正規化・基準についてはPi5の保存処理を実装する際に確認し、
-仕様へ追記する。
+保存値はPi5のFFT出力から求めたdB値で、次の計算式を用いる。
+
+```text
+X[k] = 8192点の複素FFT出力（周期Hann窓適用、FFT出力の正規化なし）
+P[k] = Re(X[k])² + Im(X[k])²
+dB[k] = 10 × log10(P[k] + 1e-20)
+```
+
+`FFT_VALUE_SCALE=DB_POWER`、`FFT_NORMALIZATION=NONE`、
+`FFT_WINDOW=PERIODIC_HANN`、`FFT_POWER_EPSILON=1e-20` を必須キーとして記録する。
+ADC入力は8ビットI/Q値を `(value - 127.5) / 127.5` で正規化し、
+Pi5の受信DSPを経由した複素信号をFFT入力とする。
+これはdBmや校正済みの電界強度ではなく、Pi5 DSP出力の数値に対する尺度である。
+Display Levelや音量の変更は保存値に影響しない。
+`SDR_GAIN_TENTHS_DB` はSDRゲインの設定値を0.1 dB単位で記録する。
 
 1レコードは、
 
@@ -563,10 +580,18 @@ Draftであり、実装検証に伴って改訂する可能性がある。
 | FFT Data全体 | 7,214,400 bytes | 8,654,400 bytes |
 | ファイル全体 | 7,226,704 bytes | 8,666,704 bytes |
 
-第3版ではヘッダの80バイト固定長CARD方式を廃止し、UTF-8のJSONに変更する。
-JSON本文の直後からヘッダ領域末尾までを0x00で埋める。
-中心周波数は設定可能、保存範囲は中心±300 Hz、601点／秒とする。
-Validity Map、Event Map、FFT Dataの構造と開始位置は変更しない。
+第1版の501点ファイルと第2版の601点ファイルは、レコード長が異なる。
+ReaderはHeaderのFFT_BIN_COUNTからレコード長を決め、501点を601点として解釈しない。
+
+```text
+RECORD_SIZE = FFT_BIN_COUNT × 4
+RECORD_OFFSET(slot) = FFT_DATA_OFFSET + slot × RECORD_SIZE
+FILE_SIZE = FFT_DATA_OFFSET + RECORD_SLOTS × RECORD_SIZE
+```
+
+中心周波数は設定で変更できる。中心900 Hzなら600～1200 Hzを保存する。
+1ファイル内では中心周波数と保存範囲を一定に保ち、Headerと実データを一致させる。
+Pi5では0～1800 HzのFFT出力内に保存範囲が収まる設定を使用する。
 
 ## 13. 第3版の変更点と互換性
 
@@ -580,7 +605,29 @@ Validity Map、Event Map、FFT Dataの構造と開始位置は変更しない。
 | FFT点数 | 601点／秒 | 601点／秒（変更なし） |
 | ファイル全体 | 8,666,704 bytes | 8,666,704 bytes（変更なし） |
 
-本改版は仕様書の変更であり、既存の `HroWriter` のJSON対応は別途実装する。
+`HroWriter` とReaderは本仕様のVersion 2に対応する。
 形式Version 1のCARDヘッダと、形式Version 2のJSONヘッダは互換ではない。
 Readerは先頭の内容を確認して形式を判定し、JSONの場合は
 `HRO_FILE_VERSION` を検証する。未対応形式を推測で読み込まない。
+
+
+## 14. Pi5保存処理の運用
+
+- 受信したFFTのタイムスタンプをUTCの時間境界で区切り、1時間3600スロットに保存する。
+- 日本時間の年月日ごとに `/mnt/hro/observations/YYYY/YYYYMM/YYYYMMDD/` を作成し、PNG・JSON・HROを同じ日付ディレクトリに保存する。
+- ファイル名は観測局prefixと日本時間の開始時刻を使う（例：`BJ202610040900.hro.tmp`）。
+- 同じ秒が複数回届いた場合は、最初の有効データを残す。
+- 起動前、停止中、欠損した秒はValidity Mapを0のまま残す。
+- 次の時間のデータを受信した時点で前のファイルを `.hro` に確定する。
+  欠損があっても時間区間が終了すれば確定でき、完全性はValidity Mapで判断する。
+- 通常のサービス停止では現在の時間のファイルを `.tmp` のまま閉じる。
+- 再起動後は、同じ時間のVersion 2一時ファイルを検証して再開する。
+  観測条件が異なる場合は追記を拒否し、既存ファイルを保護する。
+- 過去の時間の正常な一時ファイルは再起動後に確定する。既存の確定ファイルは上書きしない。
+- 時刻が後退したデータは無視し、現在のファイルの `TIME_CONFLICTS` を増やす。
+- `START_TIME_SOURCE` はファイル作成時にNTP同期が確認できれば `NTP`、
+  未同期なら `SYSTEM`、取得できなければ `UNKNOWN`。未同期だけを根拠にRTCとは記載しない。
+- 各秒の保存後にストリームをflushする。OSキャッシュの永続化を保証するものではなく、
+  突然の電源断では最新のデータが失われる可能性がある。
+- 今回のPi5保存処理は眼視イベントを受信しない。Event Mapは0で初期化し、
+  将来の眼視記録連携に備える。

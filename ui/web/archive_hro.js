@@ -2,6 +2,8 @@
 (() => {
     const el = id => document.getElementById(id);
     let files = [], currentPage = null, currentOffset = 0, requestId = 0;
+    let listLoading = false, listLoaded = false, windows = [], nextBefore = null;
+    let rangeStart = '', rangeEnd = '';
     const time = value => new Intl.DateTimeFormat('en-GB', {
         timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
         hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
@@ -112,15 +114,37 @@
             if (id === requestId) el('hroStatus').textContent = error.message + ' — try Refresh.';
         } finally { if (id === requestId) controls(); }
     }
-    async function refreshFiles() {
+    async function refreshFiles(older = false) {
+        if (listLoading || (older && !nextBefore)) return;
+        listLoading = true;
         const old = el('hroFile').value, offset = currentOffset;
         const id = ++requestId;
-        currentPage = null; controls(true); el('hroStatus').textContent = 'Loading HRO files…';
-        clearCanvas('hroCanvas'); clearCanvas('spectrumCanvas'); el('recordDetails').textContent = '';
+        let failed = false;
+        el('hroOlder').textContent = 'Loading Archives…';
+        el('hroOlder').setAttribute('data-state', 'loading');
+        el('hroOlder').setAttribute('aria-busy', 'true');
+        el('hroOlder').disabled = true; el('hroRefresh').disabled = true;
+        controls(true); el('hroRange').textContent = 'Loading HRO files…';
         try {
-            const data = await getJSON('/api/archive/hro/list');
+            const cursors = older ? [nextBefore] : windows.length ? windows : [''];
+            let merged = new Map((older ? files : []).map(file => [file.file, file]));
+            const fetched = [];
+            for (const cursor of cursors) {
+                const data = await getJSON('/api/archive/hro/list' + (cursor ? '?before=' + encodeURIComponent(cursor) : ''));
+                if (!Array.isArray(data.items)) throw new Error('Invalid HRO list response');
+                fetched.push(data);
+                for (const file of data.items) merged.set(file.file, file);
+            }
             if (id !== requestId) return;
-            files = data;
+            files = [...merged.values()].sort((a,b) => a.file.localeCompare(b.file));
+            windows = older ? [...windows, fetched[0].before] : fetched.map(data => data.before);
+            const first = fetched[0], last = fetched[fetched.length-1];
+            if (!older) rangeEnd = first.end_date;
+            rangeStart = last.start_date; nextBefore = last.has_more ? last.next_before : null;
+            listLoaded = true;
+            el('hroRange').textContent = `${rangeStart} – ${rangeEnd} JST · ${files.length} HRO files` +
+                (older && !last.items.length ? ' · No data in the added 30-day period.' : '') +
+                (!last.has_more ? ' · No older archives.' : '');
             el('hroFile').replaceChildren();
             for (const file of files) {
                 const option = document.createElement('option'); option.value = file.file;
@@ -131,19 +155,30 @@
             const match = files.find(file => file.file === old) || files.find(file => file.file === old.replace(/\.tmp$/, ''));
             const selected = match || [...files].reverse().find(file => !file.error) || files[files.length-1];
             if (selected) el('hroFile').value = selected.file;
-            await loadPage(match && match.record_count > offset ? offset : 0);
+            if (!older || !match || !currentPage) await loadPage(match && match.record_count > offset ? offset : 0);
         } catch (error) {
-            if (id === requestId) { el('hroStatus').textContent = error.message; controls(); }
+            failed = true;
+            if (id === requestId) el('hroRange').textContent = 'Failed to load HRO files. Please retry. ' + error.message;
+        } finally {
+            listLoading = false;
+            const complete = !failed && !nextBefore;
+            el('hroOlder').disabled = complete;
+            el('hroOlder').textContent = failed ? 'Retry Loading Archives' : complete ? '✓ All Archives Loaded' : 'Load Older Archives (+30 Days)';
+            el('hroOlder').setAttribute('data-state', complete ? 'complete' : 'ready');
+            el('hroOlder').setAttribute('aria-busy', 'false');
+            el('hroRefresh').disabled = false;
+            controls();
         }
     }
     function mode(hro) {
         el('hroView').hidden = !hro; el('pngView').hidden = hro;
         el('hroMode').setAttribute('aria-pressed', String(hro));
         el('pngMode').setAttribute('aria-pressed', String(!hro));
-        if (hro && !files.length) refreshFiles();
+        if (hro && !listLoaded) refreshFiles();
     }
     el('hroMode').onclick = () => mode(true); el('pngMode').onclick = () => mode(false);
-    el('hroRefresh').onclick = refreshFiles;
+    el('hroRefresh').onclick = () => refreshFiles();
+    el('hroOlder').onclick = () => refreshFiles(nextBefore !== null);
     el('hroFile').onchange = () => loadPage(0);
     el('hroPrevious').onclick = () => loadPage(Math.max(0, currentOffset-1200));
     el('hroNext').onclick = () => loadPage(currentPage.next_offset);

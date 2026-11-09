@@ -69,6 +69,35 @@ int main() {
         check(images[0]["quality"]=="metadata_error");
         check(images[1]["quality"]=="unknown");
         check(images[2]["quality"]=="partial" && images[2]["received_seconds"]==537);
+        const auto dated=root/"dated";
+        const auto makeDay=[&](const std::string& day, bool image, bool hro) {
+            const auto dir=dated/day.substr(0,4)/day.substr(0,6)/day;
+            fs::create_directories(dir);
+            if(image) {std::ofstream out(dir/("BJ"+day+"0000.png"));}
+            if(hro) header(dir/("BJ"+day+"0000.hro.tmp"),true);
+        };
+        makeDay("20261009",true,true); makeDay("20261010",true,true);
+        makeDay("20261108",true,true); makeDay("20261109",true,true);
+        auto window=hro::archive::listWindow(dated,true,"20261109");
+        check(window["start_date"]=="2026-10-10" && window["end_date"]=="2026-11-08");
+        check(window["items"].size()==2 && window["has_more"]==true && window["next_before"]=="20261010");
+        auto older=hro::archive::listWindow(dated,true,window["next_before"]);
+        check(older["items"].size()==1 && older["has_more"]==false);
+        check(older["items"][0]["png_file"]=="BJ202610090000.png");
+        window=hro::archive::listWindow(dated,false,"20261109");
+        check(window["items"].size()==2 && window["items"][0]["file"]=="2026/202610/20261010/BJ202610100000.hro.tmp");
+        check(window["items"][0]["record_count"]==0); // Header-only temporary observation remains visible.
+        makeDay("20240101",true,false);
+        window=hro::archive::listWindow(dated,true,"20261009");
+        check(window["items"].empty() && window["has_more"]==true); // Empty period must not terminate navigation.
+        window=hro::archive::listWindow(dated,true,"20240301");
+        check(window["start_date"]=="2024-01-31" && window["end_date"]=="2024-02-29");
+        makeDay("20231231",false,true);
+        window=hro::archive::listWindow(dated,false,"20240102");
+        check(window["start_date"]=="2023-12-03" && window["items"].size()==1);
+        rejected=false;try{hro::archive::listWindow(dated,true,"20260230");}catch(...){rejected=true;}check(rejected);
+        rejected=false;try{hro::archive::listWindow(dated,true,"../../etc");}catch(...){rejected=true;}check(rejected);
+        check(hro::archive::listWindow(root/"absent",true,"20261109")["items"].empty());
         fs::remove_all(root);std::cout<<"Archive: sequential/legacy, partial tail, pagination, uint64 and path protection passed\n";
     } catch (...) {fs::remove_all(root);throw;}
 }

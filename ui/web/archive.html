@@ -163,6 +163,34 @@ a {
 #recordSlider { width: min(700px, 90%); }
 #hroStatus, #recordDetails { white-space: pre-wrap; line-height: 1.6; color: #ddd; }
 #hroView p { color: #bbb; }
+/* Keep history loading distinct from image/record navigation. */
+.archive-history {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    gap: 12px 20px; padding: 14px 16px; margin: 12px 0 16px;
+    border: 1px solid #277082; border-radius: 8px; background: #061923;
+}
+.history-range { color: #e2f4f8; font-size: 15px; line-height: 1.5; }
+#archiveOlder, #hroOlder {
+    min-height: 46px; padding: 12px 20px; border: 2px solid #00dfff;
+    border-radius: 7px; background: #00dfff; color: #00141b;
+    font: bold 16px Arial, sans-serif; cursor: pointer; opacity: 1;
+}
+#archiveOlder:hover:not(:disabled), #hroOlder:hover:not(:disabled) {
+    background: #8df2ff; border-color: #8df2ff;
+}
+#archiveOlder:focus-visible, #hroOlder:focus-visible {
+    outline: 3px solid #ffffff; outline-offset: 4px;
+}
+#archiveOlder:disabled, #hroOlder:disabled { cursor: default; opacity: 1; }
+#archiveOlder[data-state="complete"], #hroOlder[data-state="complete"] {
+    background: #103424; border-color: #66df9c; color: #a7f4c7;
+}
+#archiveOlder[data-state="loading"], #hroOlder[data-state="loading"] {
+    background: #153746; border-color: #5ba1b5; color: #e2f4f8;
+}
+@media (max-width: 640px) {
+    #archiveOlder, #hroOlder { width: 100%; }
+}
 </style>
 </head>
 
@@ -184,6 +212,10 @@ a {
 <button id="hroRefresh">Refresh</button>
 <button id="hroPrevious">◀ Previous records</button>
 <button id="hroNext">Next records ▶</button>
+</div>
+<div class="archive-history">
+<div id="hroRange" class="history-range" role="status"></div>
+<button id="hroOlder" class="load-older" type="button" disabled>Load Older Archives (+30 Days)</button>
 </div>
 <div id="hroStatus" role="status">Select HRO / FFT to load files.</div>
 <p>Times are JST. Recording and partial files are available. Each column is one FFT in generation order; missing legacy slots are blank.</p>
@@ -219,6 +251,10 @@ a {
 
 <div id="archiveListArea">
     <h2>Image List</h2>
+    <div class="archive-history">
+        <div id="archiveRange" class="history-range" role="status"></div>
+        <button id="archiveOlder" class="load-older" type="button" disabled>Load Older Archives (+30 Days)</button>
+    </div>
     <div id="archiveLinks"></div>
 </div>
 
@@ -227,6 +263,8 @@ a {
 let archiveList = [];
 let currentIndex = -1;
 let metadataRequest = 0;
+let archiveBefore = null, archiveLoading = false, archiveStart = '', archiveEnd = '';
+
 function qualityLabel(item) {
     if (item.quality === "partial") return `Partial ${item.received_seconds}/${item.expected_seconds}s`;
     if (item.quality === "metadata_error") return "Metadata unavailable";
@@ -542,48 +580,54 @@ function buildArchiveLinks()
     }
 }
 
-async function loadArchive()
+async function loadArchive(older = false)
 {
-    const status =
-        document.getElementById('status');
-
-    try
-    {
-        const response =
-            await fetch('/api/archive/list');
-
-        if (!response.ok)
-        {
-            throw new Error(
-                `HTTP ${response.status}`);
+    if (archiveLoading || (older && !archiveBefore)) return;
+    archiveLoading = true;
+    const button = document.getElementById('archiveOlder');
+    const range = document.getElementById('archiveRange');
+    let failed = false;
+    button.disabled = true; button.textContent = 'Loading Archives…';
+    button.setAttribute('data-state', 'loading');
+    button.setAttribute('aria-busy', 'true');
+    try {
+        const cursor = older ? '?before=' + encodeURIComponent(archiveBefore) : '';
+        const response = await fetch('/api/archive/list' + cursor, {cache: 'no-store'});
+        const data = await response.json();
+        if (!response.ok || !Array.isArray(data.items)) throw new Error(data.error || 'Invalid archive response');
+        const selected = archiveList[currentIndex]?.png_file;
+        const merged = new Map((older ? archiveList : []).map(item => [item.png_file, item]));
+        for (const item of data.items) merged.set(item.png_file, item);
+        archiveList = [...merged.values()].sort((a,b) => a.png_file.localeCompare(b.png_file));
+        archiveStart = data.start_date;
+        if (!older) archiveEnd = data.end_date;
+        archiveBefore = data.has_more ? data.next_before : null;
+        range.textContent = `${archiveStart} – ${archiveEnd} JST · ${archiveList.length} observations` +
+            (!data.items.length ? ' · No data in the added 30-day period.' : '') +
+            (!data.has_more ? ' · No older archives.' : '');
+        populateDates(); buildArchiveLinks();
+        if (archiveList.length) {
+            const preserved = archiveList.findIndex(item => item.png_file === selected);
+            showArchive(preserved >= 0 ? preserved : archiveList.length-1);
+        } else {
+            document.getElementById('status').textContent = 'No archive data in this period.';
+            document.getElementById('metadata').textContent = '';
+            document.getElementById('previousButton').disabled = true;
+            document.getElementById('nextButton').disabled = true;
         }
-
-        archiveList =
-            await response.json();
-
-        if (archiveList.length === 0)
-        {
-            status.textContent =
-                'No archive data.';
-
-            return;
-        }
-
-        populateDates();
-        buildArchiveLinks();
-
-        // Include partial observations, selecting the latest available image.
-        showArchive(
-            archiveList.length - 1);
-    }
-    catch (error)
-    {
-        console.error(error);
-
-        status.textContent =
-            'Failed to load archive.';
+    } catch (error) {
+        failed = true;
+        range.textContent = 'Failed to load archives. Reload the page or retry Older. ' + error.message;
+    } finally {
+        archiveLoading = false;
+        const complete = !failed && !archiveBefore;
+        button.textContent = failed ? 'Retry Loading Archives' : complete ? '✓ All Archives Loaded' : 'Load Older Archives (+30 Days)';
+        button.disabled = complete;
+        button.setAttribute('data-state', complete ? 'complete' : 'ready');
+        button.setAttribute('aria-busy', 'false');
     }
 }
+document.getElementById('archiveOlder').onclick = () => loadArchive(archiveBefore !== null);
 
 async function loadMetadata(item)
 {

@@ -972,20 +972,24 @@ int main()
         });
 
     server.Get("/api/archive/list",
-        [](const httplib::Request&, httplib::Response& res) {
+        [](const httplib::Request& req, httplib::Response& res) {
             res.set_header("Cache-Control", "no-store");
             try {
-                res.set_content(hro::archive::listImages("/mnt/hro/observations").dump(), "application/json");
+                res.set_content(hro::archive::listWindow("/mnt/hro/observations", true, req.has_param("before") ? req.get_param_value("before") : "").dump(), "application/json");
+            } catch (const std::invalid_argument& e) {
+                res.status = 400; res.set_content(json({{"error", e.what()}}).dump(), "application/json");
             } catch (const std::exception& e) {
                 res.status = 500; res.set_content(json({{"error", e.what()}}).dump(), "application/json");
             }
         });
 
     server.Get("/api/archive/hro/list",
-        [](const httplib::Request&, httplib::Response& res) {
+        [](const httplib::Request& req, httplib::Response& res) {
             res.set_header("Cache-Control", "no-store");
             try {
-                res.set_content(hro::archive::list("/mnt/hro/observations").dump(), "application/json");
+                res.set_content(hro::archive::listWindow("/mnt/hro/observations", false, req.has_param("before") ? req.get_param_value("before") : "").dump(), "application/json");
+            } catch (const std::invalid_argument& e) {
+                res.status = 400; res.set_content(json({{"error", e.what()}}).dump(), "application/json");
             } catch (const std::exception& e) {
                 res.status = 500; res.set_content(json({{"error", e.what()}}).dump(), "application/json");
             }

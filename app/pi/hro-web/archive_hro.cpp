@@ -157,6 +157,69 @@ Json list(const fs::path& root) {
     std::sort(items.begin(), items.end(), [](const Json& a, const Json& b) { return a["file"] < b["file"]; });
     return items;
 }
+namespace {
+std::string calendar(std::int64_t day, const char* format = "%Y%m%d") {
+    const time_t t = day * 86400; std::tm utc{}; gmtime_r(&t, &utc);
+    char text[32]{}; std::strftime(text, sizeof text, format, &utc); return text;
+}
+std::int64_t parseDay(const std::string& date) {
+    if (date.size() != 8 || !std::all_of(date.begin(), date.end(), [](char c){return c >= '0' && c <= '9';}))
+        throw std::invalid_argument("Expected YYYYMMDD date cursor");
+    std::tm utc{}; utc.tm_year = std::stoi(date.substr(0,4))-1900;
+    utc.tm_mon = std::stoi(date.substr(4,2))-1; utc.tm_mday = std::stoi(date.substr(6,2));
+    const auto day = static_cast<std::int64_t>(timegm(&utc)) / 86400;
+    if (calendar(day) != date || utc.tm_year < 70 || utc.tm_year > 300)
+        throw std::invalid_argument("Invalid calendar date cursor");
+    return day;
+}
+}
+Json listWindow(const fs::path& root, bool images, const std::string& before) {
+    const auto end = before.empty() ? (static_cast<std::int64_t>(std::time(nullptr))+9*3600)/86400+1 : parseDay(before);
+    const auto start = end-30;
+    Json result = {{"items", Json::array()}, {"start_date", calendar(start, "%Y-%m-%d")},
+                   {"end_date", calendar(end-1, "%Y-%m-%d")}, {"before", calendar(end)}, {"next_before", calendar(start)}, {"has_more", false}};
+    if (!fs::exists(root)) return result;
+    // Inspect date directories only. Older metadata and FFT files are not opened.
+    std::vector<fs::path> days;
+    for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied), last; it != last; ++it) {
+        if (it->is_symlink()) { it.disable_recursion_pending(); continue; }
+        if (!it->is_directory()) continue;
+        const auto name = it->path().filename().string();
+        const int depth = it.depth();
+        if (depth < 2) {
+            if (name.size() != (depth == 0 ? 4u : 6u) ||
+                !std::all_of(name.begin(), name.end(), [](char c){return c >= '0' && c <= '9';}))
+                it.disable_recursion_pending();
+            continue;
+        }
+        it.disable_recursion_pending();
+        if (depth != 2 || name.size()!=8) continue;
+        std::int64_t day;
+        try { day = parseDay(name); } catch (const std::invalid_argument&) { continue; }
+        if (it->path().parent_path().filename() != name.substr(0,6) ||
+            it->path().parent_path().parent_path().filename() != name.substr(0,4)) continue;
+        if (day < start) {
+            // Only check names to avoid offering an Older button for empty directories.
+            for (const auto& file : fs::directory_iterator(it->path(), fs::directory_options::skip_permission_denied)) {
+                const auto path=file.path();
+                if (file.is_symlink() || !file.is_regular_file() || path.filename().string().rfind("._",0)==0) continue;
+                if ((images && path.extension()==".png") || (!images && (path.extension()==".hro" ||
+                    (path.extension()==".tmp" && path.stem().extension()==".hro")))) {
+                    result["has_more"]=true; break;
+                }
+            }
+        } else if (day < end) days.push_back(it->path());
+    }
+    std::sort(days.begin(),days.end());
+    for (const auto& day : days) {
+        auto items = images ? listImages(day) : list(day);
+        for (auto& item : items) {
+            if (!images) item["file"] = (day.lexically_relative(root)/item["file"].get<std::string>()).generic_string();
+            result["items"].push_back(std::move(item));
+        }
+    }
+    return result;
+}
 Json page(const fs::path& root, const std::string& relative, std::size_t offset, std::size_t limit) {
     if (!limit || limit > 1200) throw std::invalid_argument("Page limit must be 1..1200");
     Snapshot snapshot(checked(root, relative));

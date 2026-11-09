@@ -7,30 +7,14 @@ This project is developed by **Bergamot JellyBeans** as a project of
 
 The project aims to build a reliable platform for continuous meteor radio observation using software-defined radio (SDR), with support for both stationary and portable observation systems.
 
-## Pi5 Setup and Configuration Examples
+## HROデータ保存（Pi5）
 
-[Pi5-HROの構築手順：NTP・RTL-SDR・ビルド・起動（日本語）](docs/Pi5_Installation.md)
+`hro-engine` は生成した全FFT（中心±300 Hzの601点）を生成順に、ミリ秒時刻とシーケンス付きのHRO Version 2連続レコードとして保存します。PNG・JSONは従来どおり `hro-png` が保存します。
+[ファイル仕様](docs/HRO_File_Format_Specification.md)と
+[導入・動作確認](app/pi/hro-png/HRO_RECORDING.md)を参照してください。
 
-[Pi5の設定・NVMeマウント・SMB共有（日本語）](docs/Pi5_Setup.md)
+本プロジェクトは、設計・実装・文書作成の補助にOpenAIのChatGPT／Codexを使用しています。
 
-Configuration examples based on the running Pi5 station are available in
-[`examples/pi5/`](examples/pi5/). Replace observer details and the SSD UUID
-before use. The Samba and fstab examples are fragments, not complete replacements.
-
-## HRO recording and Archive Viewer
-
-Pi5のhro-engineは、生成したFFT（中心周波数±300 Hzの601点）を生成順に保存します。
-各レコードはUnix時刻（ミリ秒）とシーケンスを持ちます。同じ秒のFFTも保持します。
-PNG・JSON保存はhro-pngが担当します。
-
-- [HRO記録・導入と確認](app/pi/hro-png/HRO_RECORDING.md)
-- [Archive Viewerの操作・反映手順](docs/Archive_Viewer.md)
-- [日本語：HRO v2連続レコードと旧秒スロット形式](docs/HRO_File_Format_Specification.md)
-- [English: sequential records and legacy format](docs/HRO_File_Format_Specification_EN.md)
-
-The archive viewer displays partial PNG observations, legacy HRO files and sequential FFT records,
-including complete records in temporary files. Recording and viewer tests have passed on Pi5;
-long-duration operation is currently under observation. The existing directory layout is retained.
 
 ## Project Goals
 
@@ -79,4 +63,8 @@ Raspberry Pi 5
    +-- Tab5 Remote Monitor
    |
    +-- Future AI Analysis
-```
+
+## Archive Viewer
+
+欠損のあるPNGと、新旧HRO・記録途中のFFTを表示します。
+[使い方と反映手順](docs/Archive_Viewer.md)を参照してください。
