@@ -994,6 +994,18 @@ int main()
                 res.status = 500; res.set_content(json({{"error", e.what()}}).dump(), "application/json");
             }
         });
+    server.Get("/api/archive/png/frame",
+        [](const httplib::Request& req, httplib::Response& res) {
+            res.set_header("Cache-Control", "no-store");
+            try {
+                if (!req.has_param("file")) throw std::invalid_argument("Missing PNG filename");
+                res.set_content(hro::archive::imageFrame("/mnt/hro/observations",req.get_param_value("file")),"application/octet-stream");
+            } catch (const std::invalid_argument& e) {
+                res.status=400;res.set_content(json({{"error",e.what()}}).dump(),"application/json");
+            } catch (const std::exception& e) {
+                res.status=500;res.set_content(json({{"error",e.what()}}).dump(),"application/json");
+            }
+        });
     server.Get("/api/archive/hro/records",
         [](const httplib::Request& req, httplib::Response& res) {
             res.set_header("Cache-Control", "no-store");

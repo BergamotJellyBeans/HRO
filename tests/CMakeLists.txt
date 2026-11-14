@@ -142,3 +142,7 @@ add_executable(test_archive_hro test_archive_hro.cpp ../app/pi/hro-web/archive_h
 target_include_directories(test_archive_hro PRIVATE ../app/pi/hro-web ${HRO_JSON_INCLUDE_DIR})
 target_link_libraries(test_archive_hro PRIVATE hro_core)
 add_test(NAME archive_hro COMMAND test_archive_hro)
+
+add_executable(test_png_time_alignment test_png_time_alignment.cpp)
+target_include_directories(test_png_time_alignment PRIVATE ../app/pi/hro-png)
+add_test(NAME png_time_alignment COMMAND test_png_time_alignment)

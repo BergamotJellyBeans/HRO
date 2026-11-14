@@ -4,6 +4,18 @@
     let files = [], currentPage = null, currentOffset = 0, requestId = 0;
     let listLoading = false, listLoaded = false, windows = [], nextBefore = null;
     let rangeStart = '', rangeEnd = '';
+    let displayLevel = 0; // Archive-only; never save to LIVE configuration or observation files.
+    const levelText = () => `${displayLevel > 0 ? '+' : ''}${displayLevel} dB`;
+    function changeDisplayLevel(level) {
+        displayLevel = Math.max(-30, Math.min(30, level));
+        el('hroDisplayLevel').textContent = levelText();
+        el('hroLevelMinus').disabled = displayLevel === -30;
+        el('hroLevelPlus').disabled = displayLevel === 30;
+        el('hroLevelReset').disabled = displayLevel === 0;
+        if (!currentPage) return;
+        drawPage();
+        if (currentPage.records.length) selectRecord(Number(el('recordSlider').value) || 0);
+    }
     const time = value => new Intl.DateTimeFormat('en-GB', {
         timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
         hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
@@ -35,7 +47,7 @@
             (record.valid ? '' : ` · Missing / invalid${record.error ? ': ' + record.error : ''}`);
         const ctx = clearCanvas('spectrumCanvas');
         ctx.fillStyle = '#ccc'; ctx.font = '14px monospace';
-        ctx.fillText('FFT power (dB), without display correction', 64, 20);
+        ctx.fillText(`FFT power (dB) · Display Level: ${levelText()}`, 64, 20);
         const left = 64, right = 1240, top = 35, bottom = 190;
         ctx.strokeStyle = '#344255'; ctx.lineWidth = 1;
         for (let db = -20; db <= 30; db += 10) {
@@ -51,7 +63,7 @@
         ctx.strokeStyle = '#66ff88'; ctx.beginPath();
         record.fft_db.forEach((db, i) => {
             const x = left + i / 600 * (right - left);
-            const y = bottom - Math.max(0, Math.min(1, (db + 20) / 50)) * (bottom - top);
+            const y = bottom - Math.max(0, Math.min(1, (db + displayLevel + 20) / 50)) * (bottom - top);
             if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
         });
         ctx.stroke();
@@ -70,7 +82,7 @@
         records.forEach((record, x) => {
             for (let y = 0; y < height; ++y) {
                 const at = (y * records.length + x) * 4;
-                const rgb = record.valid ? color(record.fft_db[Math.round((1-y/(height-1))*600)]) : [8,13,24];
+                const rgb = record.valid ? color(record.fft_db[Math.round((1-y/(height-1))*600)] + displayLevel) : [8,13,24];
                 image.data[at] = rgb[0]; image.data[at+1] = rgb[1]; image.data[at+2] = rgb[2]; image.data[at+3] = 255;
             }
         });
@@ -189,5 +201,108 @@
         const x = (event.clientX - canvas.getBoundingClientRect().left) * canvas.width / canvas.getBoundingClientRect().width;
         selectRecord(Math.max(0, Math.min(currentPage.records.length-1, Math.floor(x-64))));
     };
+    el('hroLevelMinus').onclick = () => changeDisplayLevel(displayLevel - 1);
+    el('hroLevelPlus').onclick = () => changeDisplayLevel(displayLevel + 1);
+    el('hroLevelReset').onclick = () => changeDisplayLevel(0);
+    changeDisplayLevel(0);
+    controls();
+})();
+
+// PNG view: keep the saved image's labels and redraw only the plots from raw HRO.
+(() => {
+    const el = id => document.getElementById(id);
+    if (!el('pngLevelPlus')) return;
+    el('pngDisplayControls').dataset.revision = '20261114-4';
+    const image = el('archiveImage'), canvas = el('archivePlot');
+    let filename = '', level = 0, generation = 0, slots = null, pending = false, display = 'original';
+    const status = text => { el('pngRenderStatus').textContent = text; };
+    const color = db => {
+        const t = Math.max(0, Math.min(1, (db + 20) / 50));
+        if (t < .25) return [0, 0, 30 + 720*t];
+        if (t < .5) return [0, 880*(t-.25), 220];
+        if (t < .75) return [1020*(t-.5), 220, 220*(1-4*(t-.5))];
+        return [255, 220+140*(t-.75), 1020*(t-.75)];
+    };
+    function controls() {
+        const value = `${level > 0 ? '+' : ''}${level} dB`;
+        el('pngDisplayLevel').textContent = display === 'original' ? 'Original PNG' :
+            display === 'loading' ? value + ' (loading)' : value;
+        el('pngLevelMinus').disabled = level <= -30;
+        el('pngLevelPlus').disabled = level >= 30;
+        el('pngHroRefresh').disabled = pending;
+    }
+    globalThis.pngArchiveSelected = name => {
+        filename = name; ++generation; slots = null; pending = false;
+        return load();
+    };
+    function draw() {
+        if (!slots) return;
+        if (!image.complete || !image.naturalWidth) {
+            status('HRO data is ready. Waiting for the PNG frame image to load…');
+            return;
+        }
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(image, 0, 0, 1280, 480);
+        ctx.fillStyle = '#001219';
+        ctx.fillRect(48,125,1200,235); ctx.fillRect(48,370,1200,80);
+        const pixels = ctx.createImageData(1200,235);
+        for (let x=0; x<1200; ++x) {
+            const fft = slots[x];
+            for (let y=0; y<235; ++y) {
+                const rgb = fft ? color(fft[Math.round((1-y/234)*600)]+level) : [0,18,25];
+                const i=(y*1200+x)*4;
+                pixels.data[i]=rgb[0]; pixels.data[i+1]=rgb[1]; pixels.data[i+2]=rgb[2]; pixels.data[i+3]=255;
+            }
+            if (fft) {
+                const peak = Math.max(...fft) + level;
+                const height = Math.max(0,Math.min(80,(peak+10)*2));
+                ctx.fillStyle = `rgb(${color(peak).join(',')})`;
+                ctx.fillRect(48+x,450-height,1,height);
+            }
+        }
+        ctx.putImageData(pixels,48,125);
+        image.hidden = true; canvas.hidden = false; display = 'hro'; controls();
+        const count=slots.filter(Boolean).length;
+        status(`HRO redraw · ${level > 0 ? '+' : ''}${level} dB · Available ${count}/1200 seconds · Unavailable ${1200-count} seconds are blank. Recording files may still grow. Original files are unchanged.`);
+    }
+    async function load() {
+        if (!filename) {status('Select an observation first.');return;}
+        const token=++generation;
+        pending=true; display='loading'; canvas.hidden=true; image.hidden=true;
+        controls();status(`Reading the selected 20 minutes from HRO · ${level > 0 ? '+' : ''}${level} dB…`);
+        try {
+            const response=await fetch('/api/archive/png/frame?file='+encodeURIComponent(filename),{cache:'no-store'});
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const buffer=await response.arrayBuffer();
+            if (token!==generation) return;
+            const bytes=new Uint8Array(buffer), view=new DataView(buffer);
+            if (buffer.byteLength!==16+1200+1200*601*4 ||
+                String.fromCharCode(...bytes.subarray(0,7))!=='HROPNG1') throw new Error('Invalid HRO frame');
+            const result=Array(1200).fill(null);
+            for(let x=0;x<1200;++x) {
+                if (!bytes[16+x]) continue;
+                const fft=new Float32Array(601);
+                for(let b=0;b<601;++b) fft[b]=view.getFloat32(1216+(x*601+b)*4,true);
+                result[x]=fft;
+            }
+            slots=result;draw();
+        } catch(error) {
+            if(token===generation) {
+                display='original';canvas.hidden=true;image.hidden=false;
+                status('HRO data could not be read. Original PNG is shown. Use Refresh HRO data to retry. '+error.message);
+            }
+        } finally {if(token===generation) {pending=false;controls();}}
+    }
+    function change(value) { level=Math.max(-30,Math.min(30,value)); controls(); if (slots) draw(); else if (!pending) load(); }
+    el('pngLevelMinus').onclick=()=>change(level-1);
+    el('pngLevelPlus').onclick=()=>change(level+1);
+    el('pngLevelReset').onclick=()=>change(0);
+    el('pngHroRefresh').onclick=()=>load();
+    el('pngOriginal').onclick=()=>{
+        ++generation; pending=false; slots=null; display='original'; canvas.hidden=true; image.hidden=false; controls();
+        status(`Original PNG · HRO display level is not applied. The next HRO view will use ${level > 0 ? '+' : ''}${level} dB.`);
+    };
+    image.addEventListener('load',()=>{ if (slots) draw(); });
+    if (image.getAttribute('src')) globalThis.pngArchiveSelected(decodeURIComponent(image.getAttribute('src').split('/').pop()));
     controls();
 })();

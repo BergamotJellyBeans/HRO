@@ -26,6 +26,12 @@ h1 {
     font-size: 24px;
 }
 
+#archivePlot { display: block; width: min(1280px, 100vw); height: auto; margin: 0 auto; }
+#archivePlot[hidden], #archiveImage[hidden] { display: none; }
+#pngDisplayControls { margin: 12px auto; max-width: 1248px; padding: 14px; border: 1px solid #087f99; background: #061c26; border-radius: 8px; }
+#pngDisplayControls button { padding: 10px 16px; margin: 4px; font-size: 16px; }
+#pngDisplayLevel { display: inline-block; min-width: 75px; font-weight: bold; font-size: 20px; }
+#pngRenderStatus { color: #b4ccd2; margin-top: 8px; }
 #archiveImage {
     display: block;
     width: min(1280px, 100vw);
@@ -191,6 +197,21 @@ a {
 @media (max-width: 640px) {
     #archiveOlder, #hroOlder { width: 100%; }
 }
+#hroDisplayControls {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
+    background: #061923; border: 1px solid #277082; border-radius: 8px;
+    padding: 12px 16px; margin: 12px 0;
+}
+#hroDisplayControls button {
+    min-width: 44px; min-height: 44px; padding: 8px 14px;
+    border: 1px solid #00dfff; border-radius: 6px;
+    background: #103442; color: #e2faff; font-size: 17px; cursor: pointer;
+}
+#hroDisplayControls button:hover:not(:disabled) { background: #1a5366; }
+#hroDisplayControls button:disabled { opacity: .45; cursor: default; }
+#hroDisplayControls button:focus-visible { outline: 3px solid white; outline-offset: 3px; }
+#hroDisplayLevel { min-width: 76px; text-align: center; color: #00dfff; font: bold 20px monospace; }
+#hroDisplayControls span { color: #b4ccd2; font-size: 13px; }
 </style>
 </head>
 
@@ -216,6 +237,14 @@ a {
 <div class="archive-history">
 <div id="hroRange" class="history-range" role="status"></div>
 <button id="hroOlder" class="load-older" type="button" disabled>Load Older Archives (+30 Days)</button>
+</div>
+<div id="hroDisplayControls" role="group" aria-label="Archive Display Level">
+    <strong>Display Level</strong>
+    <button id="hroLevelMinus" type="button" aria-label="Decrease archive display level by 1 dB">−</button>
+    <output id="hroDisplayLevel" aria-live="polite">0 dB</output>
+    <button id="hroLevelPlus" type="button" aria-label="Increase archive display level by 1 dB">＋</button>
+    <button id="hroLevelReset" type="button">Reset to 0 dB</button>
+    <span>Archive display only · LIVE unchanged</span>
 </div>
 <div id="hroStatus" role="status">Select HRO / FFT to load files.</div>
 <p>Times are JST. Recording and partial files are available. Each column is one FFT in generation order; missing legacy slots are blank.</p>
@@ -243,7 +272,18 @@ a {
     <button id="nextButton">Next ▶</button>
 </div>
 
+<div id="pngDisplayControls" role="group" aria-label="PNG view display level">
+    <strong>Display Level</strong>
+    <button id="pngLevelMinus" type="button">−</button>
+    <output id="pngDisplayLevel" aria-live="polite">Original PNG</output>
+    <button id="pngLevelPlus" type="button">＋</button>
+    <button id="pngLevelReset" type="button">Reset to 0 dB</button>
+    <button id="pngHroRefresh" type="button">Refresh HRO data</button>
+    <button id="pngOriginal" type="button">Original PNG</button>
+    <div id="pngRenderStatus" role="status">Loading the selected observation from HRO…</div>
+</div>
 <img id="archiveImage" alt="HRO archive image">
+<canvas id="archivePlot" width="1280" height="480" hidden aria-label="20-minute observation redrawn from HRO"></canvas>
 
 <div id="metadata">
     Metadata: loading...
@@ -429,6 +469,7 @@ function showArchive(index)
         document.getElementById('status').textContent = item.png_file + ' · Image unavailable';
     };
     image.src = '/archive/image/' + encodeURIComponent(item.png_file);
+    if (globalThis.pngArchiveSelected) globalThis.pngArchiveSelected(item.png_file);
 
     loadMetadata(item);
 
@@ -738,7 +779,9 @@ document.getElementById('timeSelect').onchange =
 
 loadArchive();
 </script>
-<script src="/archive/viewer.js"></script>
+<script src="/archive/viewer.js?v=png-level-20261114-4"
+ onerror="document.getElementById('pngRenderStatus').textContent='Display controls could not be loaded. Reload this page.'"
+ onload="if (!globalThis.pngArchiveSelected) document.getElementById('pngRenderStatus').textContent='Display controls are outdated or failed to initialize. Update both archive.html and archive_hro.js, then reload.'"></script>
 
 </body>
 </html>

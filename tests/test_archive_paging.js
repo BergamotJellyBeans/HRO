@@ -10,7 +10,11 @@ class Element {
     set innerHTML(value) { this.children=[]; }
     get options() { return this.children; }
     setAttribute() {}
-    getContext() { return {fillRect(){},fillText(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},putImageData(){},
+    addEventListener() {}
+    getAttribute() { return null; }
+    getContext() { const owner=this; return {fillRect(){},fillText(){},beginPath(){},
+        moveTo(x,y){owner.points=[[x,y]];},lineTo(x,y){owner.points.push([x,y]);},stroke(){},
+        putImageData(image){owner.pixels=image.data.slice();},
         createImageData(w,h){return {data:new Uint8ClampedArray(w*h*4)};}}; }
 }
 const ids = new Map();
@@ -19,6 +23,7 @@ const calls=[];let fail=false;
 const image = name => ({png_file:'BJ'+name+'.png',json_exists:false,quality:'partial',received_seconds:10,expected_seconds:1200});
 const file = name => ({file:name+'.hro',name:name+'.hro',record_count:2400});
 const dates = ['20261109','20261010','20260910','20260811'];
+const originalFFT=Object.freeze(Array(601).fill(-10));
 const header={FFT_MIN_HZ:480,FFT_CENTER_HZ:780,FFT_MAX_HZ:1080};
 const context=vm.createContext({console,Map,Set,Date,Number,Math,String,Intl,BigInt,Uint8ClampedArray,
  document:{getElementById:get,createElement:tag=>new Element(tag),querySelectorAll:()=>[]},
@@ -28,7 +33,7 @@ const context=vm.createContext({console,Map,Set,Date,Number,Math,String,Intl,Big
     const u=new URL(url,'http://localhost');
     if(u.pathname.endsWith('/records')) {
         const offset=Number(u.searchParams.get('offset')||0);
-        return {ok:true,json:async()=>({header,layout:'sequential',records:[{index:offset,valid:false,sequence:String(offset),timestamp_ms:1794056400000}],
+        return {ok:true,json:async()=>({header,layout:'sequential',records:[{index:offset,valid:true,sequence:String(offset),timestamp_ms:1794056400000,fft_db:originalFFT}],
             record_count:2400,next_offset:offset+1200,has_more:offset===0})};
     }
     const cursor=u.searchParams.get('before')||dates[0],i=dates.indexOf(cursor);
@@ -59,8 +64,29 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../ui/web/archive_hro.js'),'utf8'),context);
  get('hroMode').onclick();await tick();await tick();
  assert.equal(get('hroFile').children.length,1);
+ const networkBeforeLevel=calls.length;
+ const oldPixels=get('hroCanvas').pixels.slice();
+ const oldY=get('spectrumCanvas').points[0][1];
+ get('hroLevelPlus').onclick();
+ assert.equal(get('hroDisplayLevel').textContent,'+1 dB');
+ assert.notDeepEqual(get('hroCanvas').pixels,oldPixels); // Loaded waterfall is recolored.
+ assert.ok(get('spectrumCanvas').points[0][1]<oldY); // Spectrum rises with positive dB correction.
+ assert.equal(calls.length,networkBeforeLevel); // No refetch or LIVE configuration writes.
+ assert.equal(originalFFT[0],-10); // Frozen observation data is never modified.
+ for(let n=0;n<40;++n)get('hroLevelPlus').onclick();
+ assert.equal(get('hroDisplayLevel').textContent,'+30 dB');
+ assert.equal(get('hroLevelPlus').disabled,true);
+ get('hroLevelReset').onclick();
+ assert.deepEqual(get('hroCanvas').pixels,oldPixels);
+ for(let n=0;n<40;++n)get('hroLevelMinus').onclick();
+ assert.equal(get('hroDisplayLevel').textContent,'-30 dB');
+ assert.equal(get('hroLevelMinus').disabled,true);
+ get('hroLevelReset').onclick();
  await get('hroNext').onclick();
  assert.match(get('hroStatus').textContent,/Showing 1200/);
+ const recordBeforeLevel=get('recordDetails').textContent;
+ get('hroLevelPlus').onclick();
+ assert.equal(get('recordDetails').textContent,recordBeforeLevel); // Selected FFT survives redraw.
  const before=calls.filter(url=>url.includes('/records')).length;
  await get('hroOlder').onclick();
  assert.equal(calls.filter(url=>url.includes('/records')).length,before); // Older list must not reset selected FFT page.
@@ -71,5 +97,6 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
  await get('hroRefresh').onclick();
  assert.equal(get('hroFile').children.length,2); // Refresh retains all loaded periods.
  assert.match(get('hroStatus').textContent,/Showing 1200/);
+ console.log('Archive display level: recoloring, spectrum, raw-data protection, limits and selection passed');
  console.log('Archive paging: 30-day requests, empty windows, retry, selection, refresh and end-of-history passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -1,5 +1,8 @@
 #include "archive_hro.hpp"
 #include "hro_header.h"
+#include "../hro-png/png_time_alignment.hpp"
+#include <regex>
+#include <vector>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -63,6 +66,37 @@ struct Snapshot {
     Json info() const {
         return {{"header", header}, {"record_count", count}, {"trailing_bytes", tail},
                 {"layout", sequential ? "sequential" : "legacy"}};
+    }
+    // Read timing separately: do not allocate/serialize FFT arrays outside the requested window.
+    bool timing(std::size_t index, std::int64_t& ms, std::uint64_t& sequence) {
+        if (!sequential) {
+            stream.clear(); stream.seekg(VALIDITY_MAP_OFFSET + validityByteIndex(index));
+            unsigned char bit=0; stream.read(reinterpret_cast<char*>(&bit),1);
+            ms=startMs+static_cast<std::int64_t>(index)*1000; sequence=0;
+            return stream && (bit & validityBitMask(index));
+        }
+        std::array<unsigned char,16> bytes{};
+        stream.clear(); stream.seekg(HEADER_SIZE+index*2420);
+        stream.read(reinterpret_cast<char*>(bytes.data()),bytes.size());
+        if (!stream) return false;
+        std::uint64_t stamp=0; sequence=0;
+        for (unsigned i=0;i<8;++i) {stamp|=std::uint64_t(bytes[i])<<(8*i);sequence|=std::uint64_t(bytes[i+8])<<(8*i);}
+        if (stamp<1704067200000ULL || stamp>=4102444800000ULL) return false;
+        ms=static_cast<std::int64_t>(stamp); return true;
+    }
+    bool spectrum(std::size_t index, char* output) {
+        const auto at=sequential ? HEADER_SIZE+index*2420+16 : spectrumOffset(index);
+        if (at+BIN_COUNT*4>size) return false;
+        std::array<unsigned char,BIN_COUNT*4> bytes{};
+        stream.clear();stream.seekg(at);stream.read(reinterpret_cast<char*>(bytes.data()),bytes.size());
+        if (!stream) return false;
+        for (std::size_t b=0;b<BIN_COUNT;++b) {
+            std::uint32_t bits=0;
+            for(unsigned i=0;i<4;++i) bits|=std::uint32_t(bytes[b*4+i])<<(8*i);
+            float value;std::memcpy(&value,&bits,4);
+            if (!std::isfinite(value)) return false;
+        }
+        std::memcpy(output,bytes.data(),bytes.size());return true;
     }
     Json record(std::size_t index) {
         Json result = {{"index", index}, {"valid", false}, {"sequence", nullptr},
@@ -219,6 +253,64 @@ Json listWindow(const fs::path& root, bool images, const std::string& before) {
         }
     }
     return result;
+}
+std::string imageFrame(const fs::path& root, const std::string& png) {
+    std::smatch match;
+    if (!std::regex_match(png,match,std::regex("([A-Za-z0-9_-]{1,32})([0-9]{12})\\.png")))
+        throw std::invalid_argument("Invalid PNG archive filename");
+    const auto prefix=match[1].str(), date=match[2].str();
+    const auto day=parseDay(date.substr(0,8));
+    const int hour=std::stoi(date.substr(8,2)), minute=std::stoi(date.substr(10,2));
+    if (hour>23 || (minute!=0 && minute!=20 && minute!=40)) throw std::invalid_argument("Invalid PNG observation time");
+    const std::int64_t start=day*86400+hour*3600+minute*60-9*3600;
+    const auto localHour=day*86400+hour*3600;
+    std::vector<fs::path> files;
+    // Three exact hour names, in at most three exact date directories. No history scan.
+    for (int delta=-1;delta<=1;++delta) {
+        const time_t local=localHour+delta*3600; std::tm tm{}; gmtime_r(&local,&tm);
+        char text[20]{};std::strftime(text,sizeof text,"%Y%m%d%H00",&tm);
+        const std::string stamp(text), base=prefix+stamp;
+        const auto directory=root/stamp.substr(0,4)/stamp.substr(0,6)/stamp.substr(0,8);
+        if (!fs::exists(directory)) continue;
+        std::vector<std::pair<unsigned long long,fs::path>> parts;
+        for (const auto& entry:fs::directory_iterator(directory)) {
+            if (entry.is_symlink() || !entry.is_regular_file()) continue;
+            const auto name=entry.path().filename().string();
+            if (name==base+".hro" || name==base+".hro.tmp") parts.emplace_back(0,entry.path());
+            else if (name.rfind(base+".part",0)==0) {
+                std::smatch part;const auto suffix=name.substr(base.size()+5);
+                if (std::regex_match(suffix,part,std::regex("([0-9]{1,9})\\.hro(\\.tmp)?")))
+                    parts.emplace_back(std::stoull(part[1].str()),entry.path());
+            }
+        }
+        std::sort(parts.begin(),parts.end());
+        for (const auto& part:parts) files.push_back(part.second);
+    }
+    constexpr std::size_t seconds=1200, bins=601, dataOffset=16+seconds;
+    std::string frame(dataOffset+seconds*bins*4,'\0');
+    std::memcpy(frame.data(),"HROPNG1",7);
+    hro::pi::PngTimeAlignment alignment;
+    std::uint32_t available=0;
+    for (const auto& path:files) {
+        Snapshot snapshot(checked(root,path.lexically_relative(root).generic_string()));
+        for (std::size_t i=0;i<snapshot.count;++i) {
+            std::int64_t ms;std::uint64_t seq;
+            if (!snapshot.timing(i,ms,seq)) continue;
+            std::int64_t second=ms/1000;
+            if (snapshot.sequential) {
+                const auto placed=alignment.place(ms,seq);
+                if (!placed) continue;
+                second=placed->second;
+            }
+            if (second<start || second>=start+seconds) continue;
+            const auto slot=static_cast<std::size_t>(second-start);
+            if (frame[16+slot]) continue;
+            if (!snapshot.spectrum(i,frame.data()+dataOffset+slot*bins*4)) continue;
+            frame[16+slot]=1;++available;
+        }
+    }
+    for(unsigned i=0;i<4;++i) frame[8+i]=static_cast<char>(available>>(8*i));
+    return frame;
 }
 Json page(const fs::path& root, const std::string& relative, std::size_t offset, std::size_t limit) {
     if (!limit || limit > 1200) throw std::invalid_argument("Page limit must be 1..1200");

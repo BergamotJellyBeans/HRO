@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <iostream>
 #include <algorithm>
+#include <chrono>
+#include <cstring>
 #include <unistd.h>
 namespace fs = std::filesystem;
 using Json = nlohmann::json;
@@ -98,6 +100,50 @@ int main() {
         rejected=false;try{hro::archive::listWindow(dated,true,"20260230");}catch(...){rejected=true;}check(rejected);
         rejected=false;try{hro::archive::listWindow(dated,true,"../../etc");}catch(...){rejected=true;}check(rejected);
         check(hro::archive::listWindow(root/"absent",true,"20261109")["items"].empty());
+        // Compact PNG view: only matching hours; partial tails and gaps stay missing.
+        const auto fast=root/"fast", day=fast/"2026/202611/20261107";
+        fs::create_directories(day);
+        const auto recording=day/"BJ202611072200.hro.tmp";
+        header(recording,true);
+        const std::int64_t start=1794056400000LL;
+        auto writeRecord=[&](const fs::path& file,std::int64_t ms,std::uint64_t seq,float db) {
+            std::array<unsigned char,2420> bytes{};
+            for (unsigned i=0;i<8;++i) {bytes[i]=std::uint64_t(ms)>>(8*i);bytes[i+8]=seq>>(8*i);}
+            std::uint32_t bits;std::memcpy(&bits,&db,4);
+            for (unsigned b=0;b<601;++b) for(unsigned i=0;i<4;++i) bytes[16+b*4+i]=bits>>(8*i);
+            std::ofstream out(file,std::ios::binary|std::ios::app);out.write(reinterpret_cast<char*>(bytes.data()),bytes.size());
+        };
+        for (unsigned i=0;i<3600;++i) if(i!=17) writeRecord(recording,start+i*1000+123,100+i,-12.5f);
+        {std::ofstream out(recording,std::ios::binary|std::ios::app);out<<"torn";}
+        auto begin=std::chrono::steady_clock::now();
+        auto frame=hro::archive::imageFrame(fast,"BJ202611072200.png");
+        const auto elapsed=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-begin).count();
+        check(frame.size()==16+1200+1200*601*4 && frame.substr(0,7)=="HROPNG1");
+        const auto available=[&](const std::string& bytes) {
+            std::uint32_t n=0;for(unsigned i=0;i<4;++i)n|=std::uint32_t(static_cast<unsigned char>(bytes[8+i]))<<(8*i);return n;
+        };
+        check(available(frame)==1199 && frame[16+17]==0 && frame[16+18]==1);
+        std::uint32_t bits=0;for(unsigned i=0;i<4;++i)bits|=std::uint32_t(static_cast<unsigned char>(frame[1216+i]))<<(8*i);
+        float db;std::memcpy(&db,&bits,4);check(db==-12.5f);
+        frame=hro::archive::imageFrame(fast,"BJ202611072220.png");check(available(frame)==1200);
+        fs::rename(recording,day/"BJ202611072200.hro");
+        frame=hro::archive::imageFrame(fast,"BJ202611072240.png");check(available(frame)==1200);
+        const auto part=day/"BJ202611072300.part1.hro.tmp";header(part,true);
+        writeRecord(part,start+3600000+123,0,-7.f);
+        frame=hro::archive::imageFrame(fast,"BJ202611072300.png");check(available(frame)==1);
+        // Midnight: previous hour's last record rounds into the new date.
+        const auto previous=day/"BJ202611072300.part2.hro";header(previous,true);
+        writeRecord(previous,start+7200000-233,5,-8.f);
+        frame=hro::archive::imageFrame(fast,"BJ202611080000.png");check(available(frame)==1 && frame[16]==1);
+        frame=hro::archive::imageFrame(fast,"BJ202611082200.png");check(available(frame)==0);
+        for(const auto* bad:{"../BJ202611072200.png","BJ202602302200.png","BJ202611072210.png","BJ202611072400.png"}) {
+            rejected=false;try{hro::archive::imageFrame(fast,bad);}catch(const std::invalid_argument&){rejected=true;}check(rejected);
+        }
+        const auto legacyFrame=day/"LEG202611072200.hro";
+        header(legacyFrame,false);fs::resize_file(legacyFrame,hro::FILE_SIZE);
+        {std::fstream out(legacyFrame,std::ios::binary|std::ios::in|std::ios::out);out.seekp(hro::VALIDITY_MAP_OFFSET);out.put(1);}
+        frame=hro::archive::imageFrame(fast,"LEG202611072200.png");check(available(frame)>0);
+        std::cout<<"Compact PNG frame: "<<frame.size()<<" bytes; local initial frame "<<elapsed<<" ms; gap, temporary/final, restart, midnight, legacy and validation passed\n";
         fs::remove_all(root);std::cout<<"Archive: sequential/legacy, partial tail, pagination, uint64 and path protection passed\n";
     } catch (...) {fs::remove_all(root);throw;}
 }
