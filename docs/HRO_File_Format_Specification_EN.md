@@ -1,3 +1,36 @@
+# HRO v2 sequential FFT records (2026-11-08)
+
+New recordings use HRO_FILE_VERSION=2 with RECORD_LAYOUT="SEQUENTIAL_FFT_V1".
+The third-edition specification below applies only to legacy files without RECORD_LAYOUT.
+
+The UTF-8 JSON header is NUL-padded to 8192 bytes. DATA_OFFSET is 8192 and RECORD_SIZE
+is 2420. VALIDITY_MAP_SIZE, EVENT_MAP_SIZE, RECORD_SLOTS and RECORD_INTERVAL_SEC are zero.
+RECORD_FIELDS is ["TIMESTAMP_MS_INT64", "SEQUENCE_UINT64", "FFT_FLOAT32"].
+
+Each record contains, in little endian: int64 Unix timestamp in milliseconds (offset 0),
+uint64 sequence (offset 8), then 601 IEEE-754 float32 FFT power dB values (offset 16).
+Bins run from the configured center minus 300 Hz to center plus 300 Hz.
+File size is 8192 + 2420 * record_count; no validity or event map follows the header.
+Timestamps come from the system clock after FFT calculation, not acquisition start.
+The producer writes synchronously before UDP transmission. Same-second FFTs and backward
+clock timestamps are retained in generation order. No display-level correction is applied.
+
+The sequence starts at zero per engine process and increments for each generated FFT.
+Hourly directory and JST naming conventions are retained. Hour changes and normal shutdown
+finalize .hro.tmp to .hro. Existing files are never overwritten or resumed; a numbered
+.partN segment is selected instead. A backward hour change also starts a new segment.
+Within one engine run, sequence numbers establish order across files; filenames alone do not.
+Interrupted .tmp files remain untouched. Each record is flushed, but power-loss durability
+is not guaranteed by fsync. A recording error terminates the engine with failure; existing
+systemd on-failure policy may restart it. SDR acquisition and raw-queue loss remain separate.
+
+Use tools/read_hro.py --record N for the new layout and --second N for legacy files.
+The strict command-line reader rejects torn trailing records. The read-only archive viewer
+instead displays complete records and warns about partial trailing bytes. It supports legacy
+missing slots and does not infer that every .tmp file is actively recording.
+
+---
+
 # HRO File Format Specification — Third Edition
 
 [日本語](HRO_File_Format_Specification.md) | English

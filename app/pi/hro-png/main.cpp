@@ -1,6 +1,9 @@
-#include <cairo/cairo.h>
+#include "png_time_alignment.hpp"
+#include <cairo.h>
 
 #include "hro_config.h"
+#include <csignal>
+#include <cerrno>
 #include "hro_fft_config.h"
 #include "hro_version.h"
 
@@ -24,6 +27,8 @@
 #include <cstdio>
 
 namespace {
+volatile std::sig_atomic_t stopRequested = 0;
+void requestStop(int) { stopRequested = 1; }
 
 constexpr int WIDTH  = 1280;
 constexpr int HEIGHT = 480;
@@ -41,6 +46,8 @@ constexpr int PNG_SECONDS = 20 * 60; // 1200
 struct PngSecond
 {
     bool valid = false;
+    bool timeAdjusted = false;
+    bool alignmentReset = false;
 
     uint64_t sequence = 0;
 
@@ -144,17 +151,6 @@ float readBeFloat(const uint8_t* p)
 //
 // Returned value is Unix time in seconds.
 //
-int64_t getBlockStart(int64_t timestampMs)
-{
-    const int64_t seconds =
-        timestampMs / 1000;
-
-    return
-        (seconds / PNG_SECONDS) *
-        PNG_SECONDS;
-}
-
-
 std::string formatLocalTime(
     int64_t unixSeconds)
 {
@@ -414,6 +410,7 @@ bool writeJson(
     bool haveSequence = false;
     uint64_t firstSequence = 0;
     uint64_t lastSequence = 0;
+    int adjustedCount = 0, resetCount = 0;
 
     for (const auto& s : buffer)
     {
@@ -423,6 +420,8 @@ bool writeJson(
         }
 
         ++receivedCount;
+        adjustedCount += s.timeAdjusted;
+        resetCount += s.alignmentReset;
 
         if (!haveSequence)
         {
@@ -531,6 +530,9 @@ bool writeJson(
         << "  },\n"
 
         << "  \"data_quality\": {\n"
+        << "    \"time_placement\": \"SEQUENCE_ALIGNED_NEAREST_SECOND\",\n"
+        << "    \"placement_adjusted_seconds\": " << adjustedCount << ",\n"
+        << "    \"alignment_resets\": " << resetCount << ",\n"
         << "    \"expected_seconds\": "
         << PNG_SECONDS << ",\n"
         << "    \"received_seconds\": "
@@ -1383,6 +1385,9 @@ int main()
     }
 
 
+    std::signal(SIGTERM, requestStop);
+    std::signal(SIGINT, requestStop);
+
     // --------------------------------------------------------
     // UDP socket
     // --------------------------------------------------------
@@ -1434,6 +1439,9 @@ int main()
     }
 
 
+    timeval receiveTimeout{1, 0};
+    ::setsockopt(udpSocket, SOL_SOCKET, SO_RCVTIMEO, &receiveTimeout, sizeof receiveTimeout);
+
     std::cout
         << "HRO PNG receiver\n"
         << "UDP port : "
@@ -1450,6 +1458,7 @@ int main()
     // --------------------------------------------------------
 
     PngBuffer buffer{};
+    hro::pi::PngTimeAlignment timeAlignment;
 
     bool haveBlock = false;
 
@@ -1465,7 +1474,7 @@ int main()
     // Receive forever
     // --------------------------------------------------------
 
-    while (true)
+    while (!stopRequested)
     {
         const ssize_t received =
             ::recvfrom(
@@ -1479,6 +1488,7 @@ int main()
 
         if (received < 0)
         {
+            if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) continue;
             std::cerr
                 << "WARNING: UDP receive failed\n";
 
@@ -1544,9 +1554,17 @@ int main()
         // Determine 20-minute block
         // ----------------------------------------------------
 
-        const int64_t blockStart =
-            getBlockStart(
-                timestampMs);
+        const auto placement = timeAlignment.place(timestampMs, sequence);
+        if (!placement) {
+            std::cerr << "WARNING: PNG time placement rejected duplicate/out-of-order/invalid packet: sequence="
+                      << sequence << " timestamp_ms=" << timestampMs << '\n';
+            continue;
+        }
+        if (placement->reanchored) {
+            std::cerr << "WARNING: PNG time placement reanchored after sequence/clock discontinuity: sequence="
+                      << sequence << " timestamp_ms=" << timestampMs << '\n';
+        }
+        const int64_t blockStart = (placement->second / PNG_SECONDS) * PNG_SECONDS;
 
 
         // First packet after startup.
@@ -1649,8 +1667,7 @@ int main()
         // Position within current 20-minute block
         // ----------------------------------------------------
 
-        const int64_t timestampSeconds =
-            timestampMs / 1000;
+        const int64_t timestampSeconds = placement->second;
 
         const int secondIndex =
             static_cast<int>(
@@ -1683,6 +1700,8 @@ int main()
         // observation settings still require the normal coordinated restart.
         HroConfig appearance;
         if (appearance.load("/etc/hro/config.ini")) config.display_level_db = appearance.display_level_db;
+        second.timeAdjusted = timestampMs / 1000 != timestampSeconds;
+        second.alignmentReset = placement->reanchored;
         second.displayLevelDb = config.display_level_db;
         second.valid =
             true;

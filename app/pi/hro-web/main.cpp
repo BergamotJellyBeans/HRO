@@ -5,6 +5,7 @@
 #include "hro_config.h"
 #include "hro_fft_config.h"
 #include "tab5_udp_server.h"
+#include "archive_hro.hpp"
 
 #include <chrono>
 #include <thread>
@@ -812,6 +813,11 @@ int main()
                 "text/html");
         });
 
+    server.Get("/archive/viewer.js",
+        [](const httplib::Request&, httplib::Response& res) {
+            res.set_file_content("ui/web/archive_hro.js", "application/javascript");
+        });
+
     server.Get("/assets/radio_meteor_observation_base_1280x720.png",
         [](const httplib::Request&, httplib::Response& res)
         {
@@ -966,140 +972,55 @@ int main()
         });
 
     server.Get("/api/archive/list",
-        [](const httplib::Request&, httplib::Response& res)
-        {
-            namespace fs = std::filesystem;
-
-            const fs::path archiveRoot = "/mnt/hro/observations";
-
-            try
-            {
-                std::vector<fs::path> files;
-
-                if (!fs::exists(archiveRoot))
-                {
-                    res.status = 404;
-                    res.set_content(
-                        "{\"error\":\"Archive directory not found\"}\n",
-                        "application/json");
-                    return;
-                }
-
-                for (const auto& entry :
-                     fs::recursive_directory_iterator(archiveRoot))
-                {
-                    if (!entry.is_regular_file())
-                        continue;
-
-                    const fs::path& path = entry.path();
-
-                if (path.extension() != ".png")
-                    continue;
-
-                const std::string filename =
-                    path.filename().string();
-
-                // macOS AppleDouble file は除外
-                if (filename.rfind("._", 0) == 0)
-                    continue;
-
-                files.push_back(path);
-             }
-
-                std::sort(
-                    files.begin(),
-                    files.end(),
-                    [](const fs::path& a, const fs::path& b)
-                    {
-                        return a.filename().string() <
-                               b.filename().string();
-                    });
-
-                json result = json::array();
-
-                for (const auto& path : files)
-                {
-                    fs::path jsonPath = path;
-                    jsonPath.replace_extension(".json");
-
-                    // JSONが存在する新形式データは、
-                    // 完全な20分ブロックだけArchiveに掲載する。
-                    // JSONがない旧データはそのまま掲載する。
-                    if (fs::exists(jsonPath))
-                    {
-                        try
-                        {
-                            std::ifstream jsonFile(jsonPath);
-
-                            if (!jsonFile)
-                            {
-                                std::cerr
-                                    << "WARNING: Failed to open archive JSON: "
-                                    << jsonPath << "\n";
-                                continue;
-                            }
-
-                            json metadata;
-                            jsonFile >> metadata;
-
-                            if (metadata.contains("data_quality"))
-                            {
-                                const auto& quality =
-                                    metadata["data_quality"];
-
-                                const int expected =
-                                    quality.value(
-                                        "expected_seconds", 0);
-
-                                const int received =
-                                    quality.value(
-                                        "received_seconds", 0);
-
-                                if (expected > 0 &&
-                                    received < expected)
-                                {
-                                    continue;
-                                }
-                            }
-                        }
-                        catch (const std::exception& e)
-                        {
-                            std::cerr
-                                << "WARNING: Invalid archive JSON: "
-                                << jsonPath
-                                << " (" << e.what() << ")\n";
-
-                            continue;
-                        }
-                    }
-
-                    json item;
-
-                    item["png_file"] =
-                        path.filename().string();
-
-                    item["json_file"] =
-                        jsonPath.filename().string();
-
-                    item["json_exists"] =
-                        fs::exists(jsonPath);
-
-                    result.push_back(item);
-                }
-
-                res.set_content(
-                    result.dump(2) + "\n",
-                    "application/json");
+        [](const httplib::Request& req, httplib::Response& res) {
+            res.set_header("Cache-Control", "no-store");
+            try {
+                res.set_content(hro::archive::listWindow("/mnt/hro/observations", true, req.has_param("before") ? req.get_param_value("before") : "").dump(), "application/json");
+            } catch (const std::invalid_argument& e) {
+                res.status = 400; res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+            } catch (const std::exception& e) {
+                res.status = 500; res.set_content(json({{"error", e.what()}}).dump(), "application/json");
             }
-            catch (const std::exception& e)
-            {
-                json result;
-                result["error"] = e.what();
+        });
 
-                res.status = 500;
-                res.set_content(
-                    result.dump(2) + "\n",
-                    "application/json");
+    server.Get("/api/archive/hro/list",
+        [](const httplib::Request& req, httplib::Response& res) {
+            res.set_header("Cache-Control", "no-store");
+            try {
+                res.set_content(hro::archive::listWindow("/mnt/hro/observations", false, req.has_param("before") ? req.get_param_value("before") : "").dump(), "application/json");
+            } catch (const std::invalid_argument& e) {
+                res.status = 400; res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+            } catch (const std::exception& e) {
+                res.status = 500; res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+            }
+        });
+    server.Get("/api/archive/png/frame",
+        [](const httplib::Request& req, httplib::Response& res) {
+            res.set_header("Cache-Control", "no-store");
+            try {
+                if (!req.has_param("file")) throw std::invalid_argument("Missing PNG filename");
+                res.set_content(hro::archive::imageFrame("/mnt/hro/observations",req.get_param_value("file")),"application/octet-stream");
+            } catch (const std::invalid_argument& e) {
+                res.status=400;res.set_content(json({{"error",e.what()}}).dump(),"application/json");
+            } catch (const std::exception& e) {
+                res.status=500;res.set_content(json({{"error",e.what()}}).dump(),"application/json");
+            }
+        });
+    server.Get("/api/archive/hro/records",
+        [](const httplib::Request& req, httplib::Response& res) {
+            res.set_header("Cache-Control", "no-store");
+            try {
+                if (!req.has_param("file")) throw std::invalid_argument("Missing HRO filename");
+                const auto value = req.has_param("offset") ? req.get_param_value("offset") : "0";
+                if (value.empty() || value.size() > 12 ||
+                    !std::all_of(value.begin(), value.end(), [](char c){ return c >= '0' && c <= '9'; }))
+                    throw std::invalid_argument("Invalid record offset");
+                res.set_content(hro::archive::page("/mnt/hro/observations", req.get_param_value("file"),
+                    std::stoull(value)).dump(), "application/json");
+            } catch (const std::invalid_argument& e) {
+                res.status = 400; res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+            } catch (const std::exception& e) {
+                res.status = 500; res.set_content(json({{"error", e.what()}}).dump(), "application/json");
             }
         });
 
