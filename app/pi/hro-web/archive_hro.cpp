@@ -167,6 +167,15 @@ Json listImages(const fs::path& root) {
                 }
             } catch (const std::exception&) { item["quality"] = "metadata_error"; }
         }
+        std::string revision;
+        for(const auto& path : {entry.path(), metadataPath}) {
+            std::error_code error;
+            const auto size=fs::file_size(path,error);
+            if(error) {revision+="missing;";continue;}
+            const auto time=fs::last_write_time(path,error);
+            revision+=std::to_string(size)+":"+(error ? "unknown" : std::to_string(static_cast<long long>(time.time_since_epoch().count())))+";";
+        }
+        item["revision"]=revision;
         result.push_back(std::move(item));
     }
     std::sort(result.begin(), result.end(), [](const Json& a, const Json& b) { return a["png_file"] < b["png_file"]; });
@@ -206,6 +215,30 @@ std::int64_t parseDay(const std::string& date) {
         throw std::invalid_argument("Invalid calendar date cursor");
     return day;
 }
+}
+Json latestImage(const fs::path& root) {
+    if(!fs::exists(root)) return nullptr;
+    std::vector<fs::path> days;
+    for(fs::recursive_directory_iterator it(root,fs::directory_options::skip_permission_denied),end;it!=end;++it) {
+        if(it->is_symlink()) {it.disable_recursion_pending();continue;}
+        if(!it->is_directory()) continue;
+        const auto name=it->path().filename().string();
+        if(it.depth()<2) {
+            if(name.size()!=(it.depth()==0?4u:6u) || !std::all_of(name.begin(),name.end(),[](char c){return c>='0'&&c<='9';})) it.disable_recursion_pending();
+            continue;
+        }
+        it.disable_recursion_pending();
+        if(it.depth()!=2) continue;
+        try {parseDay(name);}catch(const std::invalid_argument&) {continue;}
+        if(it->path().parent_path().filename()!=name.substr(0,6) || it->path().parent_path().parent_path().filename()!=name.substr(0,4)) continue;
+        days.push_back(it->path());
+    }
+    std::sort(days.rbegin(),days.rend());
+    for(const auto& day:days) {
+        auto items=listImages(day);
+        if(!items.empty()) return items.back();
+    }
+    return nullptr;
 }
 Json listWindow(const fs::path& root, bool images, const std::string& before) {
     const auto end = before.empty() ? (static_cast<std::int64_t>(std::time(nullptr))+9*3600)/86400+1 : parseDay(before);

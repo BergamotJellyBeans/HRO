@@ -19,18 +19,23 @@ class Element {
 }
 const ids = new Map();
 const get = id => {if(!ids.has(id))ids.set(id,new Element(id.endsWith('Select') || id==='hroFile'?'select':'div'));return ids.get(id);};
-const calls=[];let fail=false;
-const image = name => ({png_file:'BJ'+name+'.png',json_exists:false,quality:'partial',received_seconds:10,expected_seconds:1200});
+const calls=[];let fail=false, latestItem=null, latestHistoryItems=[], releaseLatest=null, deferLatest=false;
+const image = name => ({png_file:'BJ'+name+'.png',json_exists:false,revision:'v1',quality:'partial',received_seconds:10,expected_seconds:1200});
 const file = name => ({file:name+'.hro',name:name+'.hro',record_count:2400});
 const dates = ['20261109','20261010','20260910','20260811'];
 const originalFFT=Object.freeze(Array(601).fill(-10));
 const header={FFT_MIN_HZ:480,FFT_CENTER_HZ:780,FFT_MAX_HZ:1080};
-const context=vm.createContext({console,Map,Set,Date,Number,Math,String,Intl,BigInt,Uint8ClampedArray,
+const context=vm.createContext({console,Map,Set,Date,Number,Math,String,Intl,BigInt,Uint8ClampedArray,setInterval:()=>0,
  document:{getElementById:get,createElement:tag=>new Element(tag),querySelectorAll:()=>[]},
  fetch:async url=>{
     calls.push(url);
     if(fail){fail=false;throw Error('simulated network error');}
     const u=new URL(url,'http://localhost');
+    if(u.pathname.endsWith('/latest')) {
+        if(deferLatest){deferLatest=false;await new Promise(resolve=>{releaseLatest=resolve;});}
+        return {ok:true,json:async()=>({item:latestItem})};
+    }
+    if(u.pathname==='/api/archive/list' && latestItem) return {ok:true,json:async()=>({items:[...latestHistoryItems,latestItem]})};
     if(u.pathname.endsWith('/records')) {
         const offset=Number(u.searchParams.get('offset')||0);
         return {ok:true,json:async()=>({header,layout:'sequential',records:[{index:offset,valid:true,sequence:String(offset),timestamp_ms:1794056400000,fft_db:originalFFT}],
@@ -61,6 +66,35 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
  assert.equal(vm.runInContext('archiveList.length',context),3);
  assert.equal(vm.runInContext('archiveList[currentIndex].png_file',context),'BJ202611080000.png');
  assert.equal(get('archiveOlder').disabled,true);
+ // Polling is idle for history, and unchanged latest data never redraws/refetches.
+ const checkLatest=()=>vm.runInContext('checkLatestArchive()',context);
+ let previousCalls=calls.length;
+ await checkLatest();assert.equal(calls.length,previousCalls);
+ vm.runInContext('showArchive(archiveList.length-1)',context);
+ latestItem=image('202611080020');
+ const oldSrc=get('archiveImage').src;
+ latestHistoryItems=[image('202611080010')]; // Repair an existing hole even with unchanged latest.
+ await checkLatest();assert.equal(get('archiveImage').src,oldSrc);
+ assert.ok(vm.runInContext("archiveList.some(item=>item.png_file==='BJ202611080010.png')",context));
+ const synchronizedCalls=calls.length;await checkLatest();
+ assert.equal(calls.length,synchronizedCalls+1); // Unchanged latest only needs the lightweight request.
+ latestItem={...latestItem,revision:'v2'};
+ await checkLatest();assert.match(get('archiveImage').src,/v2/);
+ latestItem=image('202611090000');
+ latestHistoryItems=[image('202611080040')];
+ await checkLatest();assert.match(get('archiveImage').src,/202611090000/);
+ assert.match(get('archiveRange').textContent,/2026-11-09/);
+ assert.equal(vm.runInContext('archiveList.length',context),6);
+ assert.ok(vm.runInContext("archiveList.some(item=>item.png_file==='BJ202611080040.png')",context)); // Older loaded history retained.
+ deferLatest=true;latestItem=image('202611090020');
+ const waiting=checkLatest();await tick();
+ vm.runInContext('showArchive(0)',context);releaseLatest();await waiting;
+ assert.equal(vm.runInContext('archiveList[currentIndex].png_file',context),'BJ202609010000.png');
+ previousCalls=calls.length;await checkLatest();assert.equal(calls.length,previousCalls);
+ vm.runInContext('showArchive(archiveList.length-1)',context);
+ fail=true;await checkLatest();await checkLatest();assert.match(get('archiveImage').src,/202611090020/);
+ context.document.hidden=true;previousCalls=calls.length;await checkLatest();assert.equal(calls.length,previousCalls);context.document.hidden=false;
+ console.log('Latest archive: unchanged, changed, midnight, retained history, navigation race, retry and hidden tab passed');
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../ui/web/archive_hro.js'),'utf8'),context);
  get('hroMode').onclick();await tick();await tick();
  assert.equal(get('hroFile').children.length,1);

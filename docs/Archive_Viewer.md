@@ -151,3 +151,24 @@ node tests/test_archive_paging.js
 node tests/test_archive_png_level.js
 ctest --test-dir build -R '^(archive_hro|png_time_alignment)$' --output-on-failure
 ```
+
+
+## 最新枠表示中の自動追従（2026-11-15）
+
+PNG / JSON画面で一覧の最新枠を選択中だけ、30秒ごとに/api/archive/png/latestを確認する。
+新しい保存済みPNG枠またはPNG/JSONの改訂時だけHROを再取得・再描画する。
+過去枠・HRO / FFT画面・非表示タブでは確認しない。表示レベルと読み込み済み履歴を保持する。
+最新PNGが未出力の記録中枠を新たに一覧へ追加する変更は含まない。
+更新確認は日付ディレクトリと最新日のPNG/JSONだけを調べ、FFTは読まない。
+変更なし・通信失敗時は画面を維持し、失敗後は次回確認で再試行する。
+反映にはmain.cpp、archive_hro.cpp/.hpp、archive.htmlとテストを同時更新し、
+hro-web・test_archive_hroのビルドとテスト、hro-webの再起動が必要。
+
+
+### 自動追従時の履歴補完
+
+最新1件だけを追加すると、スリープや通信途絶の間に増えた途中の観測が履歴から抜けるため、
+最新PNG/JSONの変更検出時は直近30日の一覧も取得して読み込み済み履歴と合併する。
+最初の更新確認時も一覧を同期し、既存の抜けを補う。未変更時は軽い最新確認だけを行い、
+HROの再取得・再描画はしない。確認中に過去の枠へ移った場合は自動追従を中止する。
+この履歴補完の変更だけならarchive.htmlの差し替えのみで、ビルド・再起動は不要。

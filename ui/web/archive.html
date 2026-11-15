@@ -280,6 +280,7 @@ a {
     <button id="pngLevelReset" type="button">Reset to 0 dB</button>
     <button id="pngHroRefresh" type="button">Refresh HRO data</button>
     <button id="pngOriginal" type="button">Original PNG</button>
+    <div id="latestFollowStatus" style="color: #b4ccd2; margin-top: 8px;"></div>
     <div id="pngRenderStatus" role="status">Loading the selected observation from HRO…</div>
 </div>
 <img id="archiveImage" alt="HRO archive image">
@@ -455,6 +456,9 @@ function showArchive(index)
         return;
 
     currentIndex = index;
+    document.getElementById('latestFollowStatus').textContent = index === archiveList.length-1 ?
+        'Latest observation · Check for updates every 30 seconds' :
+        'Past observation · Automatic updates paused';
 
     const item =
         archiveList[currentIndex];
@@ -468,7 +472,7 @@ function showArchive(index)
     image.onerror = () => {
         document.getElementById('status').textContent = item.png_file + ' · Image unavailable';
     };
-    image.src = '/archive/image/' + encodeURIComponent(item.png_file);
+    image.src = '/archive/image/' + encodeURIComponent(item.png_file) + (item.revision ? '?v=' + encodeURIComponent(item.revision) : '');
     if (globalThis.pngArchiveSelected) globalThis.pngArchiveSelected(item.png_file);
 
     loadMetadata(item);
@@ -668,6 +672,54 @@ async function loadArchive(older = false)
         button.setAttribute('aria-busy', 'false');
     }
 }
+// Only follow when the user is already looking at the newest published observation.
+let latestCheckPending = false, latestHistorySyncedRevision = null;
+async function checkLatestArchive() {
+    if (latestCheckPending || archiveLoading || document.hidden ||
+        document.getElementById('pngView').hidden || currentIndex < 0 ||
+        currentIndex !== archiveList.length - 1) return;
+    const selected = archiveList[currentIndex].png_file;
+    const revision = archiveList[currentIndex].revision;
+    latestCheckPending = true;
+    try {
+        const response = await fetch('/api/archive/png/latest', {cache: 'no-store'});
+        if (!response.ok) throw new Error('Latest archive check failed');
+        const {item} = await response.json();
+        // A navigation/Older/mode change while waiting cancels automatic following.
+        if (archiveLoading || document.hidden || document.getElementById('pngView').hidden ||
+            archiveList[currentIndex]?.png_file !== selected || currentIndex !== archiveList.length-1) return;
+        if (!item || item.png_file < selected) return;
+        const changed = item.png_file !== selected || item.revision !== revision;
+        const syncKey = item.png_file + ':' + item.revision;
+        if (!changed && latestHistorySyncedRevision === syncKey) return;
+        // A latest-only response can skip intermediate observations after a sleep or
+        // a network outage. Reconcile the recent list before following the latest.
+        const historyResponse = await fetch('/api/archive/list', {cache: 'no-store'});
+        if (!historyResponse.ok) throw new Error('Recent history check failed');
+        const history = await historyResponse.json();
+        if (!Array.isArray(history.items)) throw new Error('Invalid recent history');
+        if (archiveLoading || document.hidden || document.getElementById('pngView').hidden ||
+            archiveList[currentIndex]?.png_file !== selected || currentIndex !== archiveList.length-1) return;
+        const merged = new Map(archiveList.map(entry => [entry.png_file, entry]));
+        for (const entry of history.items) merged.set(entry.png_file, entry);
+        merged.set(item.png_file,item);
+        archiveList = [...merged.values()].sort((a,b)=>a.png_file.localeCompare(b.png_file));
+        const newest = archiveList[archiveList.length-1];
+        const info = parseArchiveFilename(newest.png_file);
+        if (info) archiveEnd = info.dateKey.slice(0,4)+'-'+info.dateKey.slice(4,6)+'-'+info.dateKey.slice(6,8);
+        populateDates(); buildArchiveLinks();
+        document.getElementById('archiveRange').textContent = `${archiveStart} – ${archiveEnd} JST · ${archiveList.length} observations` + (!archiveBefore ? ' · No older archives.' : '');
+        latestHistorySyncedRevision = newest.png_file + ':' + newest.revision;
+        if (changed || newest.png_file !== selected || newest.revision !== revision) showArchive(archiveList.length-1);
+        else {
+            currentIndex = archiveList.findIndex(entry => entry.png_file === selected);
+            updateSelectors(); updateArchiveLinkHighlight();
+        }
+    } catch (_) {
+        // Keep the current image and retry on the next interval; no observation writes.
+    } finally {latestCheckPending = false;}
+}
+setInterval(checkLatestArchive, 30000);
 document.getElementById('archiveOlder').onclick = () => loadArchive(archiveBefore !== null);
 
 async function loadMetadata(item)
@@ -690,7 +742,7 @@ async function loadMetadata(item)
         const response =
             await fetch(
                 '/archive/data/' +
-                encodeURIComponent(item.json_file));
+                encodeURIComponent(item.json_file), {cache: 'no-store'});
 
         if (!response.ok)
             throw new Error(`HTTP ${response.status}`);
@@ -779,7 +831,7 @@ document.getElementById('timeSelect').onchange =
 
 loadArchive();
 </script>
-<script src="/archive/viewer.js?v=png-level-20261114-4"
+<script src="/archive/viewer.js?v=png-level-20261115-2"
  onerror="document.getElementById('pngRenderStatus').textContent='Display controls could not be loaded. Reload this page.'"
  onload="if (!globalThis.pngArchiveSelected) document.getElementById('pngRenderStatus').textContent='Display controls are outdated or failed to initialize. Update both archive.html and archive_hro.js, then reload.'"></script>
 

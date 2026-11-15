@@ -6,6 +6,8 @@ namespace hro::archive {
 // Thirty JST calendar days, ending just before the optional YYYYMMDD cursor.
 nlohmann::json listWindow(const std::filesystem::path& root, bool images,
                           const std::string& before = "");
+// Latest published PNG observation and its lightweight update revision, or null.
+nlohmann::json latestImage(const std::filesystem::path& root);
 // Compact read-only 20-minute PNG-view frame: 16-byte header, 1200 validity bytes,
 // then 1200 x 601 little-endian float32 bins. Missing seconds stay blank.
 std::string imageFrame(const std::filesystem::path& root, const std::string& png);

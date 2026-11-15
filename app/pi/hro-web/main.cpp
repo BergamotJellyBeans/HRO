@@ -994,6 +994,15 @@ int main()
                 res.status = 500; res.set_content(json({{"error", e.what()}}).dump(), "application/json");
             }
         });
+    server.Get("/api/archive/png/latest",
+        [](const httplib::Request&, httplib::Response& res) {
+            res.set_header("Cache-Control","no-store");
+            try {
+                res.set_content(json({{"item",hro::archive::latestImage("/mnt/hro/observations")}}).dump(),"application/json");
+            } catch(const std::exception& e) {
+                res.status=500;res.set_content(json({{"error",e.what()}}).dump(),"application/json");
+            }
+        });
     server.Get("/api/archive/png/frame",
         [](const httplib::Request& req, httplib::Response& res) {
             res.set_header("Cache-Control", "no-store");

@@ -144,6 +144,17 @@ int main() {
         {std::fstream out(legacyFrame,std::ios::binary|std::ios::in|std::ios::out);out.seekp(hro::VALIDITY_MAP_OFFSET);out.put(1);}
         frame=hro::archive::imageFrame(fast,"LEG202611072200.png");check(available(frame)>0);
         std::cout<<"Compact PNG frame: "<<frame.size()<<" bytes; local initial frame "<<elapsed<<" ms; gap, temporary/final, restart, midnight, legacy and validation passed\n";
+        check(hro::archive::latestImage(fast).is_null());
+        {std::ofstream out(day/"BJ202611072200.png");out<<"image";}
+        auto latest=hro::archive::latestImage(fast);
+        check(latest["png_file"]=="BJ202611072200.png");
+        const auto revision=latest["revision"];
+        {std::ofstream out(day/"BJ202611072200.json");out<<"{}";}
+        check(hro::archive::latestImage(fast)["revision"]!=revision);
+        const auto tomorrow=fast/"2026/202611/20261108";fs::create_directories(tomorrow);
+        {std::ofstream out(tomorrow/"BJ202611080000.png");out<<"new";}
+        check(hro::archive::latestImage(fast)["png_file"]=="BJ202611080000.png");
+        check(hro::archive::latestImage(root/"not-present").is_null());
         fs::remove_all(root);std::cout<<"Archive: sequential/legacy, partial tail, pagination, uint64 and path protection passed\n";
     } catch (...) {fs::remove_all(root);throw;}
 }
