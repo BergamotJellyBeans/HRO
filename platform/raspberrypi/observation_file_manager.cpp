@@ -27,7 +27,7 @@ ObservationFileState checkObservationFile(
     // Basic size validation.
     const auto size = std::filesystem::file_size(tempPath, ec);
 
-    if (ec || size != FILE_SIZE) {
+    if (ec || size < HEADER_SIZE) {
         return ObservationFileState::Invalid;
     }
 
@@ -54,7 +54,15 @@ ObservationFileState checkObservationFile(
         return ObservationFileState::Invalid;
     }
 
-    if (!header.isValidV1()) {
+    if (!header.isValidV2()) {
+        return ObservationFileState::Invalid;
+    }
+
+    std::string layout;
+    if (header.getValue("RECORD_LAYOUT", layout)) {
+        if (layout != "SEQUENTIAL_FFT_V1" || (size - HEADER_SIZE) % (16 + BIN_COUNT * 4))
+            return ObservationFileState::Invalid;
+    } else if (size != FILE_SIZE) {
         return ObservationFileState::Invalid;
     }
 

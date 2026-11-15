@@ -48,6 +48,7 @@ struct HroMetadata
     std::uint64_t rfFrequencyHz    = 0;
     std::uint64_t sdrLoFrequencyHz = 0;
     std::uint32_t sdrSampleRateHz  = 0;
+    int sdrGainTenthsDb = 0;
 
 
     // -------------------------------------------------------------------------

@@ -1,28 +1,19 @@
 #pragma once
-
 #include <array>
+#include <map>
 #include <string>
-
 #include "hro_format.h"
-
+#include "hro_metadata.h"
 namespace hro {
-
-class HroHeader
-{
+class HroHeader {
 public:
-    // Load and parse an HRO fixed-size header.
     bool load(const std::array<char, HEADER_SIZE>& header);
-
-    // Returns the value associated with KEY.
-    // Returns false if KEY does not exist.
-    bool getValue(const std::string& key,
-                  std::string& value) const;
-    // Returns true if the header is compatible with HRO file format v1.
-    bool isValidV1() const;
+    bool getValue(const std::string& key, std::string& value) const;
+    bool isValidV2() const;
+    static bool incrementTimeConflicts(std::array<char, HEADER_SIZE>& header);
+    static bool encode(const HroMetadata& metadata, std::array<char, HEADER_SIZE>& header);
 private:
-    std::array<std::string, HEADER_CARD_COUNT> cards_{};
-    std::size_t cardCount_ = 0;
+    std::map<std::string, std::string> values_;
+    bool valid_ = false;
 };
-
-} // namespace hro
-
+}

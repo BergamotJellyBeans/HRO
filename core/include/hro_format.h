@@ -4,11 +4,12 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 namespace hro {
 
 // =============================================================================
-// HRO File Format Version 1
+// HRO File Format Version 2
 // =============================================================================
 //
 // File layout:
@@ -34,40 +35,18 @@ namespace hro {
 // File format
 // -----------------------------------------------------------------------------
 
-constexpr std::uint32_t FILE_VERSION = 1;
+constexpr std::uint32_t FILE_VERSION = 2;
 
 
 // -----------------------------------------------------------------------------
 // Header
 // -----------------------------------------------------------------------------
 //
-// Header is inspired by FITS.
-//
-// Each header card:
-//   - exactly 80 bytes
-//   - ASCII text
-//   - padded with ASCII SPACE (0x20)
-//   - no newline
-//   - no NUL terminator
-//
-// 100 cards occupy 8000 bytes.
-// Remaining 192 bytes are reserved and SPACE-filled.
-//
-// Logical end of header is indicated by:
-//
-//   END_HEADER
-//
+// UTF-8 JSON object followed by NUL bytes through the end of the fixed header.
+// The first NUL terminates the JSON; at least one NUL is required.
 // -----------------------------------------------------------------------------
-
-constexpr std::size_t HEADER_SIZE       = 8192;
-constexpr std::size_t HEADER_CARD_SIZE  = 80;
-constexpr std::size_t HEADER_CARD_COUNT = 100;
-
-constexpr std::size_t HEADER_CARD_AREA_SIZE =
-    HEADER_CARD_SIZE * HEADER_CARD_COUNT;
-
-constexpr std::size_t HEADER_PADDING_SIZE =
-    HEADER_SIZE - HEADER_CARD_AREA_SIZE;
+constexpr std::size_t HEADER_SIZE = 8192;
+constexpr std::size_t HEADER_JSON_MAX_SIZE = HEADER_SIZE - 1;
 
 
 // -----------------------------------------------------------------------------
@@ -145,11 +124,10 @@ constexpr EventValue EVENT_VISUAL = 0x01;
 
 constexpr std::size_t FFT_SIZE = 8192;
 
-constexpr int BIN_MIN = 480;    // 530->480
-constexpr int BIN_MAX = 1080;   // 1030->1080
+// Frequency bounds are recorded from observation metadata, never fixed here.
 
 constexpr std::size_t BIN_COUNT =
-    static_cast<std::size_t>(BIN_MAX - BIN_MIN + 1);
+    hro::FFT_BIN_COUNT;
 
 // Stored as IEEE-754 float32.
 using SpectrumValue = float;
@@ -208,12 +186,6 @@ constexpr std::size_t spectrumOffset(std::size_t slot)
 // Compile-time format checks
 // -----------------------------------------------------------------------------
 
-static_assert(HEADER_CARD_AREA_SIZE == 8000,
-              "Unexpected HRO header card area size");
-
-static_assert(HEADER_PADDING_SIZE == 192,
-              "Unexpected HRO header padding size");
-
 static_assert(RECORD_SLOTS == 3600,
               "HRO file must contain 3600 one-second slots");
 
@@ -222,6 +194,8 @@ static_assert(VALIDITY_USED_BYTES == 450,
 
 static_assert(BIN_COUNT == hro::FFT_BIN_COUNT,
               "HRO spectrum bin count must match FFT configuration");
+
+static_assert(std::numeric_limits<float>::is_iec559, "IEEE-754 float required");
 
 static_assert(sizeof(SpectrumValue) == 4,
               "HRO spectrum value must be 32-bit float");
